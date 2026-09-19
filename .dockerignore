@@ -1,0 +1,8 @@
+.env
+data
+node_modules
+.git
+.scratch
+.claude
+.agents
+docs

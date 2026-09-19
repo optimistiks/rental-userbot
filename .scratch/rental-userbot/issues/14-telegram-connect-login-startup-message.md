@@ -4,7 +4,7 @@
 
 **Blocked by:** 13 (Scaffold, settings and startup checks)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] The in-house `Telegram` interface from the spec is defined; the adapter is the only pipeline code importing mtcute
 - [ ] Client uses `storage: 'data/session.sqlite'`, `updates: { catchUp: false, messageGroupingInterval: 1000 }`

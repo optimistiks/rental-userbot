@@ -2,10 +2,10 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { Settings } from './config.js'
-import { initializeStartup } from './startup.js'
+import { announceStartup, initializeStartup } from './startup.js'
 
 const settings = (criteriaPath: string): Settings => ({
   apiId: 123456,
@@ -35,6 +35,43 @@ describe('initializeStartup', () => {
   it('fails before opening the database when Criteria cannot be read', () => {
     expect(() => initializeStartup(settings('/missing/criteria.md'), ':memory:')).toThrowError(
       /Criteria file/,
+    )
+  })
+})
+
+describe('announceStartup', () => {
+  it('sends the startup message and reports missing channels', async () => {
+    const telegram = {
+      joinedChannelIds: vi.fn(async () => [-1001234567890]),
+      sendToMe: vi.fn(async () => undefined),
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await announceStartup(telegram, [-1001234567890, -1009876543210])
+
+    expect(warn).toHaveBeenCalledWith('channel not joined: -1009876543210')
+    expect(log).toHaveBeenCalledWith(
+      'startup: 🟢 started, watching 1/2 channels; not joined: -1009876543210',
+    )
+    expect(telegram.sendToMe).toHaveBeenCalledWith(
+      '🟢 started, watching 1/2 channels\nnot joined: -1009876543210',
+    )
+
+    warn.mockRestore()
+    log.mockRestore()
+  })
+
+  it('omits the not-joined line when every channel is joined', async () => {
+    const telegram = {
+      joinedChannelIds: vi.fn(async () => [-1001234567890]),
+      sendToMe: vi.fn(async () => undefined),
+    }
+
+    await announceStartup(telegram, [-1001234567890])
+
+    expect(telegram.sendToMe).toHaveBeenCalledWith(
+      '🟢 started, watching 1/1 channels',
     )
   })
 })

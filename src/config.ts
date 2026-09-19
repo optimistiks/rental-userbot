@@ -18,6 +18,11 @@ export interface Settings {
   zonePath: string
 }
 
+export interface LoginSettings {
+  apiId: number
+  apiHash: string
+}
+
 export class SettingsError extends Error {
   constructor(message: string) {
     super(message)
@@ -63,9 +68,10 @@ function optional(env: ProcessEnv, name: string, fallback: string): string {
 }
 
 export function readSettings(env: ProcessEnv = process.env): Settings {
+  const loginSettings = readLoginSettings(env)
+
   return {
-    apiId: positiveInteger(required(env, 'API_ID'), 'API_ID'),
-    apiHash: required(env, 'API_HASH'),
+    ...loginSettings,
     channelIds: channelIds(required(env, 'CHANNEL_IDS')),
     aiGatewayApiKey: required(env, 'AI_GATEWAY_API_KEY'),
     modelId: optional(env, 'MODEL_ID', MODEL_ID),
@@ -73,5 +79,12 @@ export function readSettings(env: ProcessEnv = process.env): Settings {
     geocoderUrl: optional(env, 'GEOCODER_URL', GEOCODER_URL),
     criteriaPath: optional(env, 'CRITERIA_PATH', CRITERIA_PATH),
     zonePath: optional(env, 'ZONE_PATH', ZONE_PATH),
+  }
+}
+
+export function readLoginSettings(env: ProcessEnv = process.env): LoginSettings {
+  return {
+    apiId: positiveInteger(required(env, 'API_ID'), 'API_ID'),
+    apiHash: required(env, 'API_HASH'),
   }
 }

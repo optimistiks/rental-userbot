@@ -4,6 +4,7 @@ import {
   CRITERIA_PATH,
   GEOCODER_URL,
   MODEL_ID,
+  readLoginSettings,
   readSettings,
   ZONE_PATH,
 } from './config.js'
@@ -17,6 +18,15 @@ const validEnvironment = {
 }
 
 describe('readSettings', () => {
+  it('reads only the API settings needed by login', () => {
+    expect(
+      readLoginSettings({
+        API_ID: '123456',
+        API_HASH: 'hash',
+      }),
+    ).toEqual({ apiId: 123456, apiHash: 'hash' })
+  })
+
   it('reads required settings, parses marked channel IDs, and applies defaults', () => {
     expect(readSettings(validEnvironment)).toEqual({
       apiId: 123456,
