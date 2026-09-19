@@ -22,7 +22,7 @@ Write findings to `.scratch/rental-userbot/research/mtcute.md`.
 
 ## Answer
 
-Findings are in [research/mtcute.md](../research/mtcute.md) (also on branch `research/mtcute`), based on the published 0.32.1 source, mtcute's docs and release notes, and core.telegram.org.
+Findings are in [research/mtcute.md](../research/mtcute.md), based on the published 0.32.1 source, mtcute's docs and release notes, and core.telegram.org.
 
 - **Versions:** `@mtcute/node` and `@mtcute/dispatcher` 0.32.1, both depending on `@mtcute/core ^0.32.1`. Pin both exactly. Requires Node 22+.
 - **Updates:** configured as `updates: { catchUp: true, messageGroupingInterval: 250 }`. Album messages reach only `onMessageGroup` (a list of messages), never `onNewMessage`. Edits and deletes don't reach the new-message handlers.

@@ -18,7 +18,7 @@ Write findings to `.scratch/rental-userbot/research/runtime-docker.md`.
 
 ## Answer
 
-Findings are in [research/runtime-docker.md](../research/runtime-docker.md) (also on branch `research/runtime-docker`). The file includes a sketch Dockerfile, compose service and `pnpm-workspace.yaml`. Docker wasn't running, so nothing was tried in a real container.
+Findings are in [research/runtime-docker.md](../research/runtime-docker.md). The file includes a sketch Dockerfile, compose service and `pnpm-workspace.yaml`. Docker wasn't running, so nothing was tried in a real container.
 
 - **Node:** 26.9.0 (Current; becomes LTS 2026-10-28). Image: `node:26.9.0-trixie-slim` (glibc). Avoid Alpine: its musl arm64 builds aren't tested by Node before release.
 - **SQLite:** `better-sqlite3@13.0.3` ships prebuilt linux-arm64 binaries for glibc and musl, so no toolchain is needed. `node:sqlite` needs no flag but is still a release candidate and changing, so it's a fallback only. Caveat: better-sqlite3 13 is a two-month-old rewrite.

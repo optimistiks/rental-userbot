@@ -18,7 +18,7 @@ Write findings to `.scratch/rental-userbot/research/ai-gateway.md`.
 
 ## Answer
 
-Findings are in [research/ai-gateway.md](../research/ai-gateway.md) (also on branch `research/ai-gateway`). The error behaviour was checked against the real SDK with msw.
+Findings are in [research/ai-gateway.md](../research/ai-gateway.md). The error behaviour was checked against the real SDK with msw.
 
 - **Model:** `google/gemini-3.8-flash` (released 2026-09-02, accepts images). $0.75 per million input tokens and $3.75 per million output tokens, with thinking tokens billed as output. Each image counts as about 1,120 input tokens, so roughly $0.01 per 6-photo Post. Google's list price doubles on 2027-01-01, and the gateway is likely to follow.
 - **Client:** `ai@7.0.107` (pin exactly). Pass the model as a plain string ID; `AI_GATEWAY_API_KEY` is read from the environment. The package is ESM-only and needs Node 22 or later.
