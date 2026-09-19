@@ -1,0 +1,27 @@
+{
+  "name": "rental-listings-userbot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.4.2",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mtcute/dispatcher": "0.32.1",
+    "@mtcute/node": "0.32.1",
+    "@turf/boolean-point-in-polygon": "7.4.0",
+    "ai": "7.0.107",
+    "better-sqlite3": "12.11.1",
+    "tsx": "4.23.13",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "24.10.1",
+    "msw": "2.15.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

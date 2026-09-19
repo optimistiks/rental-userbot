@@ -4,17 +4,21 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] pnpm project with every dependency in § Stack pinned to an exact version (no `^`/`~`); `tsx` is a runtime dependency, vitest + msw are dev dependencies; no build step
-- [ ] `pnpm-workspace.yaml` with `allowBuilds: { better-sqlite3: true, esbuild: false }` (better-sqlite3 12.12.0 downloads its prebuilt binary through its install script); `node -e "require('better-sqlite3')"` works locally
-- [ ] `pnpm test` runs vitest; `pnpm typecheck` (or equivalent) passes
-- [ ] Settings are read from the environment: `API_ID`, `API_HASH`, `CHANNEL_IDS`, `AI_GATEWAY_API_KEY`, `LOCATIONIQ_TOKEN` required; `MODEL_ID`, `GEOCODER_URL`, `CRITERIA_PATH`, `ZONE_PATH` default as in § Configuration; `CHANNEL_IDS` parsed as comma-separated marked IDs (`-100…`)
-- [ ] A missing or malformed required setting crashes startup naming the variable (unit tested)
-- [ ] A missing or unreadable Criteria file crashes startup naming it (unit tested)
-- [ ] `data/bot.sqlite` is opened with better-sqlite3 and `processed_posts` is created if missing (schema from § Dedupe Store); tests can pass `:memory:`
-- [ ] Constants from § Configuration live in one place in code
-- [ ] `.env.example` lists every key, defaults commented out
-- [ ] `data.example/criteria.md` holds the starting Criteria from the spec
-- [ ] `.gitignore` per § Deployment
-- [ ] Logging is plain `console`
+- [x] pnpm project with every dependency pinned to an exact version (no `^`/`~`); `tsx` is a runtime dependency, vitest + msw are dev dependencies; no build step. The registry does not publish `better-sqlite3@12.12.0`, so the compatible published `12.11.1` is used instead.
+- [x] `pnpm-workspace.yaml` with `allowBuilds: { better-sqlite3: true, esbuild: false }`; `node -e "require('better-sqlite3')"` works locally
+- [x] `pnpm test` runs vitest; `pnpm typecheck` passes
+- [x] Settings are read from the environment: `API_ID`, `API_HASH`, `CHANNEL_IDS`, `AI_GATEWAY_API_KEY`, `LOCATIONIQ_TOKEN` required; `MODEL_ID`, `GEOCODER_URL`, `CRITERIA_PATH`, `ZONE_PATH` default as in § Configuration; `CHANNEL_IDS` parsed as comma-separated marked IDs (`-100…`)
+- [x] A missing or malformed required setting crashes startup naming the variable (unit tested)
+- [x] A missing or unreadable Criteria file crashes startup naming it (unit tested)
+- [x] `data/bot.sqlite` is opened with better-sqlite3 and `processed_posts` is created if missing (schema from § Dedupe Store); tests can pass `:memory:`
+- [x] Constants from § Configuration live in one place in code
+- [x] `.env.example` lists every key, defaults commented out
+- [x] `data.example/criteria.md` holds the starting Criteria from the spec
+- [x] `.gitignore` per § Deployment
+- [x] Logging is plain `console`
+
+## Comments
+
+- 2026-09-20: `better-sqlite3@12.12.0` from the locked spec is not published in the configured npm registry. `12.11.1` is the latest available 12.x release and satisfies mtcute's `^12.10.0` dependency range; the frozen install and native smoke check pass with it.

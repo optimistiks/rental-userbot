@@ -1,2 +1,4 @@
 .claude/worktrees/
 .env
+data/
+node_modules/
