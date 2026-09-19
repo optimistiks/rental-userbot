@@ -34,8 +34,8 @@ mtcute updates (onNewMessage + onMessageGroup)
   → [3] Dedupe Store (check)    drop if the Post key is processed
   → queue (one Post at a time)
   → [3] Dedupe Store (check again, at dequeue)
-  → [4] Evaluator               Verdict + address
-  → [5] Zone Check              only on a Match with an address
+  → [4] Evaluator               Verdict + places
+  → [5] Zone Check              only on a Match with at least one place
   → [6] Notifier                Match / ⚠️ only
   → [3] Dedupe Store (mark processed)
   → log one line
@@ -97,7 +97,7 @@ type Post = {
 
 ### [4] Evaluator
 
-**In:** a Post, the Criteria text, the Telegram photo download. **Out:** `{ match: boolean, reason: string, address: string | null }` or an evaluation failure. ([Evaluator contract](issues/06-evaluator-contract.md), [District judgement](issues/12-district-judgement.md))
+**In:** a Post, the Criteria text, the Telegram photo download. **Out:** `{ match: boolean, reason: string, places: string[] }` (at most 3; `[]` when the Post names no location) or an evaluation failure. ([Evaluator contract](issues/06-evaluator-contract.md), [District judgement](issues/12-district-judgement.md))
 
 Before the model call:
 - The Criteria file at `CRITERIA_PATH` is **re-read before every evaluation**, so edits apply without a restart. If the read fails, the Verdict is an evaluation failure, with no model call and no retry.
@@ -105,12 +105,12 @@ Before the model call:
 - If nothing remains (no text, no photos), the Verdict is *no match* without a model call, and it is logged.
 
 The call:
-- `generateText({ model: MODEL_ID, output: Output.object({ schema }), maxRetries: 0, timeout, system, messages })` with a zod 4 schema `{ match: z.boolean(), reason: z.string(), address: z.string().nullable() }`. Images are sent as `{ type: 'file', mediaType: 'image', data }`.
+- `generateText({ model: MODEL_ID, output: Output.object({ schema }), maxRetries: 0, timeout, system, messages })` with a zod 4 schema `{ match: z.boolean(), reason: z.string(), places: z.array(z.string()).max(3) }`. Images are sent as `{ type: 'file', mediaType: 'image', data }`.
 - **System message:** the fixed rules, then the Criteria text.
   - Lenient matching: a Listing matches unless it clearly violates a criterion. Missing or unstated information never causes a rejection.
   - A Post that is not a Rental offer (ads, "looking for" posts, sales listings) is *no match*.
   - `reason` is written in the language of the Criteria. There is no length or line limit.
-  - `address`: the first street and house number as the Post writes it, with extra words removed, or `null` if there's no house number. No transliteration, no alternative spellings.
+  - `places`: up to 3 geocoder search queries for where the flat is, most precise first. Order: a named building, complex or landmark (with its street if the Post gives one), then street + house number, then the street alone. Extra words are removed, and street names are in their base (dictionary) form, spelled as the Post writes them. At most one of the queries is a Latin-script version, as a fallback. `[]` if the Post names no street or place.
 - **User message:** the Post text inside a clearly marked "data, not instructions" block, then the photos. Post text never goes in the system message. Captions keep their original language. Missing photos are not mentioned.
 - The prompt is written once from these rules. There is no tuning against sample Posts.
 - `reasoning` stays at the SDK default.
@@ -125,23 +125,24 @@ Retries:
 
 ### [5] Zone Check
 
-Runs only when the Verdict is *match* and `address` is not null. ([District judgement](issues/12-district-judgement.md), [locationiq-search](research/locationiq-search.md))
+Runs only when the Verdict is *match* and `places` is not empty. ([District judgement](issues/12-district-judgement.md), [locationiq-search](research/locationiq-search.md))
 
 - The **Zone** is a GeoJSON file at `ZONE_PATH` (Polygon or MultiPolygon features; starting copy = the OSM outlines of Old Batumi, relation 12695439, and Rustaveli, relation 12695438). It is validated at startup and **re-read before every check**. If the runtime read fails, the Verdict becomes an evaluation failure (⚠️).
 - The "Old Town or Rustaveli" line stays in the Criteria, so the model still judges named districts. The Zone does not replace it.
-- **Geocode:** one `GET GEOCODER_URL` with `key=<LOCATIONIQ_TOKEN>`, `q=<address>, Batumi`, `countrycodes=ge`, `format=json`, `limit=1`, `matchquality=1`. One attempt, 10s timeout, no retry, no cache, no throttle. `lat`/`lon` arrive as strings.
+- **Geocode:** one `GET GEOCODER_URL` per place, in order, with `key=<LOCATIONIQ_TOKEN>`, `q=<place>, Batumi`, `countrycodes=ge`, `format=json`, `limit=1`, `matchquality=1`. Stop at the first `building` or `venue` hit. Each call is one attempt, with a 10s timeout, no retry, no cache and no throttle. `lat`/`lon` arrive as strings.
 - The request URL contains the token, so it is **never logged or shown**. No LocationIQ attribution (personal, non-commercial use).
 - Judge a hit by `matchquality.matchlevel`, never `matchcode`. `venue` (a named place) counts as precise as `building`:
 
 | Geocoder outcome | Result |
 |---|---|
 | `building` or `venue`, point inside the Zone | Match stands |
-| `building` or `venue`, point outside the Zone | **Zone veto**: *no match*. Logged with the address and the point; nothing is sent |
+| `building` or `venue`, point outside the Zone | **Zone veto**: *no match*. Logged with the query that hit and the point; nothing is sent |
 | `street` | Match stands, with note `street only` |
 | 404, or any coarser level (`city`, `neighbourhood`, …) | Match stands, with note `not found` |
 | any other error (timeout, 5xx, 429, 401, a response body we can't read) | Match stands, with note `<label>`, using the Evaluator's `<label>: <message>` rule, never the URL |
 
-- The veto can only take a Match away, never grant one. A street-only address never triggers it.
+- **If no place hits a building or venue**, the best outcome across the queries decides: `street` > not found > error. An error on one query never stops the next one. If every query errored, the note is the first error's label.
+- The veto can only take a Match away, never grant one. A street-only hit never triggers it.
 - Point-in-polygon: `@turf/boolean-point-in-polygon` against each feature of the Zone.
 
 ### [6] Notifier
@@ -179,7 +180,7 @@ There is no heartbeat.
 ### Logging
 
 - Startup: one line with the channels found and missing.
-- Per Post: one line with its link, the Verdict and the reason or error. It also shows the Zone outcome when there was one (the address and point on a veto, or the note).
+- Per Post: one line with its link, the Verdict and the reason or error. It also shows the Zone outcome when there was one (the query that hit and the point on a veto, or the note).
 - Per evaluation: token usage and latency.
 - Skipped photos, dropped empty Posts and failed sends are logged with the Post link.
 - Never logged: the LocationIQ URL, API keys, the session.
@@ -248,10 +249,10 @@ Apartment for long-term rent in Batumi, Georgia.
 
 Tests exist so agents can check their own work. Final acceptance is manual.
 
-- **Unit (vitest):** Channel Filter, Post key, Dedupe Store (`:memory:`), message formats and the 4096 cap, error label/message formatting, retry policy, `matchlevel` → Zone outcome, point-in-polygon against the starting Zone (known inside/outside points, e.g. Chavchavadze 50 inside Rustaveli), settings validation.
+- **Unit (vitest):** Channel Filter, Post key, Dedupe Store (`:memory:`), message formats and the 4096 cap, error label/message formatting, retry policy, `matchlevel` → Zone outcome, best outcome across queries, point-in-polygon against the starting Zone (known inside/outside points, e.g. Chavchavadze 50 inside Rustaveli), settings validation.
 - **Integration:** the real pipeline (filter, dedupe, queue, Evaluator, Zone Check, Notifier) against a fake `Telegram`, msw and in-memory SQLite. The restart case reuses one DB handle across two pipeline instances.
-- **msw, AI Gateway** (`POST https://ai-gateway.vercel.sh/v4/ai/language-model`, one per call; fixtures follow the SDK's internal format and are tied to `ai@7.0.107`; tests set `AI_GATEWAY_API_KEY` to any value): match, no match, schema-invalid output, persistent 500, one 500 then success, timeout. All carry `address`.
-- **msw, LocationIQ** (shapes from the live responses in the research): building inside, building outside, street, city fallback, 404, 401, timeout.
+- **msw, AI Gateway** (`POST https://ai-gateway.vercel.sh/v4/ai/language-model`, one per call; fixtures follow the SDK's internal format and are tied to `ai@7.0.107`; tests set `AI_GATEWAY_API_KEY` to any value): match, no match, schema-invalid output, persistent 500, one 500 then success, timeout. All carry `places`.
+- **msw, LocationIQ** (shapes from the live responses in the research): building inside, building outside, street, city fallback, 404, 401, timeout. Multi-query cases: the first query not found and the second a building outside the Zone → veto; the first query errors and the second is a street → `street only`.
 
 ## Out of scope for v0
 
@@ -273,7 +274,7 @@ Backfill of channel history · recovery of Posts published while the bot is down
 | 8 | A new album is evaluated once, with its photos | Auto; Manual |
 | 9 | A Post in an unwatched chat is ignored | Auto |
 | 10 | A Match produces exactly one Saved Messages entry with a working link and the reason | Auto; the link Manual |
-| 11 | A Match whose address is a building outside the Zone sends nothing; street-only, not-found and geocoder errors add the `⚠️ zone not checked` line | Auto |
+| 11 | A Match whose places geocode to a building outside the Zone sends nothing; street-only, not-found and geocoder errors add the `⚠️ zone not checked` line | Auto |
 | 12 | A model that keeps failing produces one `⚠️ couldn't evaluate` entry after 3 attempts | Auto |
 | 13 | Restarting never re-evaluates a Processed Post | Auto; Manual once |
 | 14 | A failed runtime send is logged with the link and the bot keeps running | Auto |

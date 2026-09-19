@@ -80,3 +80,16 @@ Match message format: `<link>\n<reason>\n⚠️ zone not checked: …`. The last
 - [Telegram boundary and Post shape](05-telegram-boundary.md): no change.
 - New LocationIQ msw fixtures: building inside, building outside, street-level fallback, city-level fallback, 404, 401 and timeout. Their shapes are taken from the live responses.
 - [Docker and compose layout](09-docker-layout.md): the data volume also holds `zone.geojson`. New settings: `ZONE_PATH`, `LOCATIONIQ_TOKEN` and `GEOCODER_URL`.
+
+## Comments
+
+**2026-09-20, `address` becomes `places`** (agreed with the owner, after the spec was locked):
+- Why: *"Квартира на улице Тбеля Абусеридзе в здании торгового центра DS Mall"* has no house number, so the old rule gave `null`, the Zone Check never ran, and the lenient rule let it through. Public Nominatim (same OSM data as LocationIQ) finds `DS Mall, Batumi` as a building in Bagrationi II, outside both the Old Batumi and Rustaveli outlines. The Russian `улица Тбеля Абусеридзе, Батуми` finds nothing, because of the case ending and OSM's spelling "Абусерисдзе".
+- The model returns `places: string[]`, at most 3 queries, most precise first: a named building or landmark (with street), then street + number, then the street alone. Streets are in base form, with at most one Latin-script fallback. This reverses the "no transliteration, no alternative spellings" rule above.
+- Code geocodes the queries in order and stops at the first `building`/`venue` hit. Otherwise the best outcome wins (`street` > not found > error). An error on one query never stops the next.
+- The owner considered and rejected a geocoding tool loop again: it adds cost from resending photos each step, a softer veto, and multi-step retries and fixtures. The query list gets the retry benefit in one model call.
+- Live LocationIQ check (2026-09-20, owner's token, spec query params):
+  - `DS Mall, Tbel Abuseridze Street` and `DS Mall` both give `matchlevel: venue`: the DS Mall building (5ა), Bagrationi II, at lat 41.6400 / lon 41.6220. That point is outside the Old Batumi and Rustaveli outlines, so the query list produces the correct Zone veto.
+  - `Tbel Abuseridze Street 5a` gives `venue`: a shop at 5a, next door. A POI at the address stands in for the building, which is fine.
+  - `Tbel Abuseridze Street` gives `street` (a centroid).
+  - `улица Тбеля Абусеридзе` gives a `city` fallback (i.e. not found). This confirms the Latin-script fallback query is needed.

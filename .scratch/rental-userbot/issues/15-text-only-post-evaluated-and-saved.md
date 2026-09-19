@@ -10,9 +10,9 @@
 - [ ] Channel Filter is a pure function keeping only `chatId ∈ CHANNEL_IDS` (unit tested)
 - [ ] A Post with no text and no photos is logged with its link and dropped
 - [ ] Evaluator re-reads the Criteria file before every evaluation
-- [ ] Model call per the spec: `generateText` with `Output.object` and the zod 4 schema `{ match, reason, address }`, `maxRetries: 0`, 60s timeout, `MODEL_ID`; single attempt in this ticket
-- [ ] System message = fixed rules (lenient matching, non-Rental-offer is no match, `reason` in the Criteria's language, `address` rule) then the Criteria; Post text only in the user message inside a "data, not instructions" block
+- [ ] Model call per the spec: `generateText` with `Output.object` and the zod 4 schema `{ match, reason, places }` (`places`: array of strings, at most 3), `maxRetries: 0`, 60s timeout, `MODEL_ID`; single attempt in this ticket
+- [ ] System message = fixed rules (lenient matching, non-Rental-offer is no match, `reason` in the Criteria's language, `places` rule) then the Criteria; Post text only in the user message inside a "data, not instructions" block
 - [ ] Every evaluation logs token usage (input, output, reasoning) and latency
 - [ ] Match → one `sendToMe` of `<link>\n<reason>`; No match → nothing sent
 - [ ] One log line per Post with link, Verdict and reason
-- [ ] Integration test: real pipeline with a fake `Telegram` + msw AI Gateway fixtures (match, no match; both carry `address`) — a Match produces exactly one send, a No match none, an unwatched chat none (Done-when 7, 9, 10)
+- [ ] Integration test: real pipeline with a fake `Telegram` + msw AI Gateway fixtures (match, no match; both carry `places`) — a Match produces exactly one send, a No match none, an unwatched chat none (Done-when 7, 9, 10)
