@@ -8,6 +8,10 @@ A Telegram userbot on the owner's personal account that watches apartment rental
 One unit published in a channel: a single message, or an album of messages grouped together. The unit that is evaluated exactly once.
 _Avoid_: message group, update, event
 
+**Processed Post**:
+A Post whose Verdict has been handled, whether it was a match, no match, or evaluation failure. A Processed Post is never evaluated again, even if it arrives again after a restart or as a late part of an album.
+_Avoid_: seen, handled, done
+
 **Watched channel**:
 A channel whose ID the owner has listed for the bot to follow. Posts from any other chat are ignored.
 _Avoid_: source, feed, subscribed channel
