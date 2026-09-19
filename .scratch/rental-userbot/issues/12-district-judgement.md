@@ -93,3 +93,4 @@ Match message format: `<link>\n<reason>\n⚠️ zone not checked: …`. The last
   - `Tbel Abuseridze Street 5a` gives `venue`: a shop at 5a, next door. A POI at the address stands in for the building, which is fine.
   - `Tbel Abuseridze Street` gives `street` (a centroid).
   - `улица Тбеля Абусеридзе` gives a `city` fallback (i.e. not found). This confirms the Latin-script fallback query is needed.
+**2026-09-20, superseded by [Agentic Evaluator](20-agentic-evaluator.md).** The fixed design here (one model call, a `places` list, and a Zone veto applied in code) is gone. The Evaluator is now an agent that gets `geocode` and `inZone` as tools and owns the Verdict outright; no code override remains. The LocationIQ facts, the OSM outlines and the `matchlevel` findings all still hold: they now live behind the geocoder adapter's `precision` mapping.

@@ -2,7 +2,7 @@
 
 Labels: wayfinder:map
 
-**Status: done.** Destination reached: [spec.md](spec.md) is locked, and the build tickets (13–19 in `issues/`, `**Status:** ready-for-agent`) came from `/to-tickets`. They are build work, not decision tickets, and are not part of this map's frontier.
+**Status: done.** Destination reached: [spec.md](spec.md) is locked. The build tickets (13–19, 22 in `issues/`, `**Status:** ready-for-agent`) came from `/to-tickets`; 13 and 14 are already implemented. They are build work, not decision tickets, and are not part of this map's frontier.
 
 ## Destination
 
@@ -29,6 +29,8 @@ A decision-complete v0 spec at [spec.md](spec.md), with every open technical que
 - [Judging the district from a Post's address](issues/12-district-judgement.md): one model call returns up to 3 `places` queries (landmark, street + number, street; later amended from a single `address`); on a match, code geocodes them in order with LocationIQ (one attempt each, stop at the first `building`/`venue` hit) and applies a **Zone veto** if the point falls outside the OSM Old Batumi + Rustaveli GeoJSON on the data volume. If the Zone can't be checked, the match goes out with `⚠️ zone not checked: …`. The Criteria keep the district line.
 - [Docker and compose layout](issues/09-docker-layout.md): `./data` bind mount with fixed `session.sqlite` + `bot.sqlite`, `CRITERIA_PATH`/`ZONE_PATH` defaults under `data/`; starting files in `data.example/`, copied by hand, missing file crashes; one `tsx src/main.ts` entrypoint with a `login` subcommand, daemon never prompts; stop the service before login; `--prod` install, better-sqlite3 smoke check, `USER node` (bind-mount write checked at acceptance).
 - [Lock the decision-complete spec](issues/07-lock-the-spec.md): [spec.md](spec.md) is locked and ready for `/to-tickets`. Gaps closed while locking: a `venue` hit counts as `building` for the Zone veto; an unreadable Criteria file gives a ⚠️ per Post; photos download once, before the first attempt; `MODEL_ID` defaults to Gemini 3.8 Flash; every Done-when check is marked Auto or Manual.
+- [Agentic Evaluator facts (AI SDK tools + Gemini)](issues/21-agentic-evaluator-facts.md): one `generateText` can combine tools + `isStepCount` + `Output.object` (Gemini 3 only; output parsed from the last step; force `toolChoice: 'none'` on the last step or risk `NoOutputGeneratedError`); `timeout` is total, `{ stepMs, toolMs }` exist; photos resent every step (~$0.02 per 3-step run, implicit caching unverified via gateway); `MockLanguageModelV4` from `ai/test` scripts runs; `result.steps` / `onStepEnd` give the trace. Not yet checked live.
+- [Agentic Evaluator](issues/20-agentic-evaluator.md): the Evaluator becomes an agent run (Post + photos in, `geocode`/`inZone` tools, `{ match, notes }` out) that **owns the Verdict**; no code veto, so **Zone veto** leaves the glossary. Tool shapes are ours (LocationIQ behind an adapter), tool errors go back to the model, the prompt moves to an editable `data/prompt.md`, 8 steps and 180s per run with the 3-attempt policy around it, Sentry AI monitoring (optional `SENTRY_DSN`), and agent tests use `ai/test`'s mock model. Verified live on the DS Mall Post: the agent geocoded, checked the Zone and returned *no match*.
 
 ## Not yet specified
 

@@ -22,3 +22,4 @@
 ## Comments
 
 - 2026-09-20: `better-sqlite3@12.12.0` from the locked spec is not published in the configured npm registry. `12.11.1` is the latest available 12.x release and satisfies mtcute's `^12.10.0` dependency range; the frozen install and native smoke check pass with it.
+- 2026-09-20: the [Agentic Evaluator](20-agentic-evaluator.md) redesign adds two settings this ticket didn't have, `PROMPT_PATH` and `SENTRY_DSN`, plus `data.example/prompt.md` and its startup check. They are picked up by ticket 15 (prompt file) and ticket 22 (Sentry), not by reopening this one.

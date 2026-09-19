@@ -46,3 +46,6 @@ Decided with the owner (2026-09-19), building on [AI Gateway facts for the Evalu
 - Drop "`reason` is one line".
 - Remove photo download failure from the retryable list; it is skip-and-log instead.
 - For [Telegram boundary and Post shape](05-telegram-boundary.md): photo download needs no retry, and a failed download must be skippable per photo.
+## Comments
+
+**2026-09-20, partly superseded by [Agentic Evaluator](20-agentic-evaluator.md).** Still true: photo failures are skipped not retried, an empty Post is *no match* without a call, the ⚠️ `<label>: <message>` format, the 4096 cap, the injected retry policy, and 3 attempts with 2s/4s backoff. Changed: the output is `{ match, notes }` (no `reason`); an attempt is a whole agent run (8 steps, 180s) rather than one model call; tool errors are not attempt failures while `NoOutputGeneratedError` is; the system message comes from an editable prompt file; and the msw AI Gateway fixtures are replaced by `MockLanguageModelV4` scripts, with msw kept for LocationIQ.

@@ -1,6 +1,6 @@
-# 15: Text-only Post evaluated and saved on a Match
+# 15: Text-only Post evaluated by the agent and saved on a Match
 
-**What to build:** the first full tracer through the pipeline. A new text-only message in a Watched channel becomes a Post, is judged against the Criteria by the model, and a Match lands in Saved Messages as `<link>\n<reason>`. Posts from other chats and empty Posts are dropped. See [spec](../spec.md) § Pipeline, § [1], § [2], § [4] Evaluator (before the call, the call), § [6] Notifier, § Logging.
+**What to build:** the first full tracer through the pipeline. A new text-only message in a Watched channel becomes a Post, is judged by the agent against the prompt and Criteria, and a Match lands in Saved Messages as `<link>\n<notes>`. Posts from other chats and empty Posts are dropped. See [spec](../spec.md) § Pipeline, § [1], § [2], § [4] Evaluator (before the run, the run, the prompt file), § [5] Notifier, § Logging and Sentry. The tools arrive in ticket 19.
 
 **Blocked by:** 14 (Telegram connect, login, 🟢 startup message and Docker)
 
@@ -9,10 +9,11 @@
 - [ ] Adapter registers `onNewMessage` and emits Posts (`chatId` marked, `messageIds`, `text`, `photos: []`, `link` from `Message.link`); service messages never become Posts; the stream starts only after the 🟢 message
 - [ ] Channel Filter is a pure function keeping only `chatId ∈ CHANNEL_IDS` (unit tested)
 - [ ] A Post with no text and no photos is logged with its link and dropped
-- [ ] Evaluator re-reads the Criteria file before every evaluation
-- [ ] Model call per the spec: `generateText` with `Output.object` and the zod 4 schema `{ match, reason, places }` (`places`: array of strings, at most 3), `maxRetries: 0`, 60s timeout, `MODEL_ID`; single attempt in this ticket
-- [ ] System message = fixed rules (lenient matching, non-Rental-offer is no match, `reason` in the Criteria's language, `places` rule) then the Criteria; Post text only in the user message inside a "data, not instructions" block
-- [ ] Every evaluation logs token usage (input, output, reasoning) and latency
-- [ ] Match → one `sendToMe` of `<link>\n<reason>`; No match → nothing sent
-- [ ] One log line per Post with link, Verdict and reason
-- [ ] Integration test: real pipeline with a fake `Telegram` + msw AI Gateway fixtures (match, no match; both carry `places`) — a Match produces exactly one send, a No match none, an unwatched chat none (Done-when 7, 9, 10)
+- [ ] New settings `PROMPT_PATH` (default `data/prompt.md`) and the startup check for the prompt file, as § Configuration and § Startup step 2 now have them; `data.example/prompt.md` holds the starting prompt
+- [ ] Evaluator re-reads the prompt file and the Criteria file before every run, and assembles the system message as prompt + Criteria (unit tested)
+- [ ] Agent run per the spec: `generateText` with `Output.object` and the zod 4 schema `{ match, notes }`, `stopWhen: isStepCount(8)`, `prepareStep` forcing `toolChoice: 'none'` on the last allowed step, reasoning summaries on, `maxRetries: 0`, 180s timeout, `MODEL_ID`; the model is injected so tests can pass a mock; single attempt and no tools in this ticket
+- [ ] The prompt file carries the working order and the decision rules; tools are never described in it. Post text goes only in the user message, inside a "data, not instructions" block
+- [ ] Every run logs its steps, token usage (input, output, reasoning) and latency, read from `result.steps` / `onStepEnd`
+- [ ] Match → one `sendToMe` of `<link>\n<notes>`; No match → nothing sent
+- [ ] One log line per Post with link, Verdict and notes
+- [ ] Integration test: real pipeline with a fake `Telegram` + `MockLanguageModelV4` from `ai/test` (a Match run and a No match run) — a Match produces exactly one send, a No match none, an unwatched chat none; the mock's recorded request shows the prompt, Criteria and Post text in the right places (Done-when 7, 9, 10)
