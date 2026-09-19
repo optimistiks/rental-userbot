@@ -47,7 +47,7 @@ Posts are evaluated **one at a time** through an in-process queue. A Post is mar
 
 ### [1] Telegram Adapter
 
-The only code that imports mtcute, apart from the `login` and `resolve-channels` commands. It implements the in-house interface the pipeline uses, which tests fake:
+The only code that imports mtcute, apart from the `login` command. It implements the in-house interface the pipeline uses, which tests fake:
 
 ```ts
 interface Telegram {
@@ -58,7 +58,7 @@ interface Telegram {
 }
 
 type Post = {
-  chatId: number        // marked form, -100…; same form as CHANNEL_IDS and resolve-channels output
+  chatId: number        // marked form, -100…; same form as CHANNEL_IDS
   messageIds: number[]  // ascending
   albumId?: string      // mtcute groupedIdUnique, albums only
   text: string          // non-empty captions/bodies joined with "\n\n", may be ""
@@ -192,9 +192,8 @@ One entrypoint, `tsx src/main.ts`:
 |---|---|
 | (none) | runs the bot |
 | `login` | mtcute's interactive `start()`: phone, code, 2FA password in the TTY. Creates `data/session.sqlite`. |
-| `resolve-channels <input>...` | read-only; prints `id  title  @username` for each input given. Accepts `@username`, `t.me/<name>` / `https://t.me/<name>` (stripped by us before `resolvePeer`), `t.me/c/<id>/…`, or the title of a joined channel (matched with `iterDialogs({ archived: 'keep' })`). Invite links (`t.me/+…`) are rejected. Never joins. Calls mtcute directly, not through the `Telegram` interface. |
 
-Both are run as `docker compose run --rm userbot <command>` (a TTY and stdin by default). **Stop the daemon first** (`docker compose stop userbot`, run the command, `docker compose up -d`), so two processes never use the session at once. The README says so; nothing enforces it.
+`login` is run as `docker compose run --rm userbot login` (a TTY and stdin by default). **Stop the daemon first** (`docker compose stop userbot`, run `login`, `docker compose up -d`), so two processes never use the session at once. The README says so; nothing enforces it.
 
 ## Configuration
 
@@ -203,7 +202,7 @@ Both are run as `docker compose run --rm userbot <command>` (a TTY and stdin by 
 | Var | Required | Default | Meaning |
 |---|---|---|---|
 | `API_ID`, `API_HASH` | yes | — | from my.telegram.org |
-| `CHANNEL_IDS` | yes | — | comma-separated marked channel IDs (`-100…`), as printed by `resolve-channels` |
+| `CHANNEL_IDS` | yes | — | comma-separated marked channel IDs (`-100…`), looked up by the owner outside the bot |
 | `AI_GATEWAY_API_KEY` | yes | — | Vercel AI Gateway key; the `ai` SDK reads it from the environment |
 | `MODEL_ID` | no | `google/gemini-3.8-flash` | gateway model ID |
 | `LOCATIONIQ_TOKEN` | yes | — | LocationIQ key |
@@ -247,14 +246,14 @@ Apartment for long-term rent in Batumi, Georgia.
 
 Tests exist so agents can check their own work. Final acceptance is manual.
 
-- **Unit (vitest):** Channel Filter, Post key, Dedupe Store (`:memory:`), message formats and the 4096 cap, error label/message formatting, retry policy, `matchlevel` → Zone outcome, point-in-polygon against the starting Zone (known inside/outside points, e.g. Chavchavadze 50 inside Rustaveli), `resolve-channels` input parsing, settings validation.
+- **Unit (vitest):** Channel Filter, Post key, Dedupe Store (`:memory:`), message formats and the 4096 cap, error label/message formatting, retry policy, `matchlevel` → Zone outcome, point-in-polygon against the starting Zone (known inside/outside points, e.g. Chavchavadze 50 inside Rustaveli), settings validation.
 - **Integration:** the real pipeline (filter, dedupe, queue, Evaluator, Zone Check, Notifier) against a fake `Telegram`, msw and in-memory SQLite. The restart case reuses one DB handle across two pipeline instances.
 - **msw, AI Gateway** (`POST https://ai-gateway.vercel.sh/v4/ai/language-model`, one per call; fixtures follow the SDK's internal format and are tied to `ai@7.0.107`; tests set `AI_GATEWAY_API_KEY` to any value): match, no match, schema-invalid output, persistent 500, one 500 then success, timeout. All carry `address`.
 - **msw, LocationIQ** (shapes from the live responses in the research): building inside, building outside, street, city fallback, 404, 401, timeout.
 
 ## Out of scope for v0
 
-Backfill of channel history · recovery of Posts published while the bot is down · listing-level dedupe (cross-posts of the same flat) · per-criterion rating cards · a separate Bot API bot for push notifications · handling edits and deletes · automatic channel joining · a heartbeat · hosting anywhere but the owner's laptop · multiple Criteria files or profiles · prompt tuning against sample Posts · geocoder caching or attribution.
+Backfill of channel history · recovery of Posts published while the bot is down · listing-level dedupe (cross-posts of the same flat) · per-criterion rating cards · a separate Bot API bot for push notifications · handling edits and deletes · automatic channel joining · a `resolve-channels` command for looking up channel IDs · a heartbeat · hosting anywhere but the owner's laptop · multiple Criteria files or profiles · prompt tuning against sample Posts · geocoder caching or attribution.
 
 ## Done when
 
@@ -268,13 +267,12 @@ Backfill of channel history · recovery of Posts published while the bot is down
 | 4 | An unjoined ID in `CHANNEL_IDS` shows as `not joined: …` in the 🟢 message and the logs | Auto; Manual once |
 | 5 | Without a session, the daemon crashes with "run login first" | Manual |
 | 6 | A missing Criteria or Zone file, or a missing required setting, crashes startup naming it | Auto |
-| 7 | `resolve-channels` prints the ID of the test channel from `@name`, a `t.me` link and its title | Manual; parsing Auto |
-| 8 | A new text-only Post in a Watched channel is evaluated | Auto; Manual |
-| 9 | A new album is evaluated once, with its photos | Auto; Manual |
-| 10 | A Post in an unwatched chat is ignored | Auto |
-| 11 | A Match produces exactly one Saved Messages entry with a working link and the reason | Auto; the link Manual |
-| 12 | A Match whose address is a building outside the Zone sends nothing; street-only, not-found and geocoder errors add the `⚠️ zone not checked` line | Auto |
-| 13 | A model that keeps failing produces one `⚠️ couldn't evaluate` entry after 3 attempts | Auto |
-| 14 | Restarting never re-evaluates a Processed Post | Auto; Manual once |
-| 15 | A failed runtime send is logged with the link and the bot keeps running | Auto |
-| 16 | The logs show one line per Post with link, Verdict and reason; token usage and latency look sane on real Posts | Manual |
+| 7 | A new text-only Post in a Watched channel is evaluated | Auto; Manual |
+| 8 | A new album is evaluated once, with its photos | Auto; Manual |
+| 9 | A Post in an unwatched chat is ignored | Auto |
+| 10 | A Match produces exactly one Saved Messages entry with a working link and the reason | Auto; the link Manual |
+| 11 | A Match whose address is a building outside the Zone sends nothing; street-only, not-found and geocoder errors add the `⚠️ zone not checked` line | Auto |
+| 12 | A model that keeps failing produces one `⚠️ couldn't evaluate` entry after 3 attempts | Auto |
+| 13 | Restarting never re-evaluates a Processed Post | Auto; Manual once |
+| 14 | A failed runtime send is logged with the link and the bot keeps running | Auto |
+| 15 | The logs show one line per Post with link, Verdict and reason; token usage and latency look sane on real Posts | Manual |
