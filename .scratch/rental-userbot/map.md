@@ -19,13 +19,14 @@ A decision-complete v0 spec at [spec.md](spec.md), with every open technical que
 - [AI Gateway facts for the Evaluator](issues/03-ai-gateway-facts.md): `google/gemini-3.8-flash` via `ai@7.0.107` `generateText` + `Output.object` (zod 4), `maxRetries: 0`, ~$0.01 per 6-photo Post; msw-able (one POST per call), but fixtures are SDK-version-bound and timeouts/401s have quirky error shapes.
 - [Runtime and Docker facts](issues/04-runtime-and-docker-facts.md): `node:26.9.0-trixie-slim`, better-sqlite3 13 prebuilt arm64 (no toolchain), tsx kept, pnpm 12 via npm with `allowBuilds: false` for better-sqlite3/esbuild; `compose run --rm` is interactive by default; stop the daemon before login.
 - [mtcute facts for the Telegram Client](issues/02-mtcute-facts.md): pin `@mtcute/node`/`dispatcher` 0.32.1; albums only via `onMessageGroup` but can split past 250ms; `Message.link` builds links; photos via `getThumbnail('y')`; better-sqlite3 session storage; catchUp has gaps for unopened channels.
+- [Liveness signal](issues/10-liveness-signal.md): one `🟢 started, watching N/M channels` message to `me` (plus unjoined IDs), no heartbeat; startup send failure crashes, runtime send failure is logged with the link and skipped; one log line per Post with link, Verdict and reason.
 - [Startup recovery of missed Posts](issues/08-startup-recovery.md): no recovery, the bot only looks forward. `catchUp: false`; whatever mtcute delivers after a wake is evaluated as-is. Dedupe Store kept, re-checked when the queue takes a Post. No manual gap checks.
 - [Evaluator contract and failure classes](issues/06-evaluator-contract.md): rules + Criteria in system, Post text as marked data in user; `reason` in the Criteria's language, any length; every error retries (no classes); photo failures skipped, not retried; empty Post is *no match* without a call; ⚠️ shows `<label>: <first line>`; Notifier caps at 4096; log usage and latency; six msw fixtures with an injected retry policy.
 - [Telegram boundary and Post shape](issues/05-telegram-boundary.md): 4-method pipeline interface (`onPost`, `downloadPhoto`, `sendToMe`, `joinedChannelIds`), `resolve-channels` calls mtcute directly; Post carries marked `chatId`, `Message.link` and lazy photo handles (`y→x→largest`, photos only, ≤6); one identity key per Post (album = grouped ID), checked at dequeue, grouping interval 1000ms; dedupe in a separate `bot.sqlite` `processed_posts` table; empty Posts and service messages are dropped.
 
 ## Not yet specified
 
-_Nothing left in the fog. Both earlier patches became tickets: [Docker and compose layout](issues/09-docker-layout.md), [Liveness signal](issues/10-liveness-signal.md)._
+_Nothing left in the fog. Both earlier patches became tickets: [Docker and compose layout](issues/09-docker-layout.md), [Liveness signal](issues/10-liveness-signal.md) (resolved)._
 
 ## Out of scope
 
