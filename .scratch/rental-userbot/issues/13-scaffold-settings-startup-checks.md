@@ -7,7 +7,7 @@
 **Status:** ready-for-agent
 
 - [ ] pnpm project with every dependency in § Stack pinned to an exact version (no `^`/`~`); `tsx` is a runtime dependency, vitest + msw are dev dependencies; no build step
-- [ ] `pnpm-workspace.yaml` with `allowBuilds: { better-sqlite3: false, esbuild: false }`
+- [ ] `pnpm-workspace.yaml` with `allowBuilds: { better-sqlite3: true, esbuild: false }` (better-sqlite3 12.12.0 downloads its prebuilt binary through its install script); `node -e "require('better-sqlite3')"` works locally
 - [ ] `pnpm test` runs vitest; `pnpm typecheck` (or equivalent) passes
 - [ ] Settings are read from the environment: `API_ID`, `API_HASH`, `CHANNEL_IDS`, `AI_GATEWAY_API_KEY`, `LOCATIONIQ_TOKEN` required; `MODEL_ID`, `GEOCODER_URL`, `CRITERIA_PATH`, `ZONE_PATH` default as in § Configuration; `CHANNEL_IDS` parsed as comma-separated marked IDs (`-100…`)
 - [ ] A missing or malformed required setting crashes startup naming the variable (unit tested)

@@ -2,6 +2,8 @@
 
 Labels: wayfinder:map
 
+**Status: done.** Destination reached: [spec.md](spec.md) is locked, and the build tickets (13–19 in `issues/`, `**Status:** ready-for-agent`) came from `/to-tickets`. They are build work, not decision tickets, and are not part of this map's frontier.
+
 ## Destination
 
 A decision-complete v0 spec at [spec.md](spec.md), with every open technical question resolved and ready for `/to-tickets`. The build is not part of this map.
@@ -17,7 +19,7 @@ A decision-complete v0 spec at [spec.md](spec.md), with every open technical que
 
 - [Charting decisions](issues/01-charting-decisions.md): destination = decision-complete spec. Notify then mark. One Post at a time. Criteria re-read every time. 3 attempts (2s/4s, 60s timeout). Startup membership warning (the `resolve-channels` command was later dropped from v0). Latest Gemini Flash, no prompt tuning. vitest + msw + in-memory SQLite behind a fake Telegram interface. Latest Node, pnpm, tsx.
 - [AI Gateway facts for the Evaluator](issues/03-ai-gateway-facts.md): `google/gemini-3.8-flash` via `ai@7.0.107` `generateText` + `Output.object` (zod 4), `maxRetries: 0`, ~$0.01 per 6-photo Post; msw-able (one POST per call), but fixtures are SDK-version-bound and timeouts/401s have quirky error shapes.
-- [Runtime and Docker facts](issues/04-runtime-and-docker-facts.md): `node:26.9.0-trixie-slim`, better-sqlite3 13 prebuilt arm64 (no toolchain), tsx kept, pnpm 12 via npm with `allowBuilds: false` for better-sqlite3/esbuild; `compose run --rm` is interactive by default; stop the daemon before login.
+- [Runtime and Docker facts](issues/04-runtime-and-docker-facts.md): `node:26.9.0-trixie-slim`, better-sqlite3 13 prebuilt arm64 (no toolchain; the spec later pinned 12.12.0 instead, see [Lock the decision-complete spec](issues/07-lock-the-spec.md)), tsx kept, pnpm 12 via npm with `allowBuilds: false` for better-sqlite3/esbuild; `compose run --rm` is interactive by default; stop the daemon before login.
 - [mtcute facts for the Telegram Client](issues/02-mtcute-facts.md): pin `@mtcute/node`/`dispatcher` 0.32.1; albums only via `onMessageGroup` but can split past 250ms; `Message.link` builds links; photos via `getThumbnail('y')`; better-sqlite3 session storage; catchUp has gaps for unopened channels.
 - [Liveness signal](issues/10-liveness-signal.md): one `🟢 started, watching N/M channels` message to `me` (plus unjoined IDs), no heartbeat; startup send failure crashes, runtime send failure is logged with the link and skipped; one log line per Post with link, Verdict and reason.
 - [Startup recovery of missed Posts](issues/08-startup-recovery.md): no recovery, the bot only looks forward. `catchUp: false`; whatever mtcute delivers after a wake is evaluated as-is. Dedupe Store kept, re-checked when the queue takes a Post. No manual gap checks.

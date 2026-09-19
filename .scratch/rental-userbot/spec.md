@@ -14,7 +14,7 @@ All versions are pinned exactly (no `^`/`~`).
 | pnpm | 12.4.2, installed with `npm i -g` (Node 26 has no corepack) | same |
 | tsx | 4.23.13, a runtime dependency; no build step | same |
 | `@mtcute/node`, `@mtcute/dispatcher` | 0.32.1 both | [mtcute](research/mtcute.md) |
-| `better-sqlite3` | 12.11.1, a direct dependency matching mtcute's `^12.10.0`, so only one native build is installed | [Telegram boundary](issues/05-telegram-boundary.md) |
+| `better-sqlite3` | 12.12.0, a direct dependency matching mtcute's `^12.10.0`, so only one native build is installed. 12.x fetches its prebuilt binary at install time through its install script (`prebuild-install`), so that script must be allowed | [Telegram boundary](issues/05-telegram-boundary.md), [runtime-docker](research/runtime-docker.md) |
 | `ai` | 7.0.107; model passed as a plain string ID through the Vercel AI Gateway | [ai-gateway](research/ai-gateway.md) |
 | `zod` | 4.x, exact version pinned at install time | same |
 | `@turf/boolean-point-in-polygon` | 7.4.0 | [geocoding](research/geocoding.md) |
@@ -191,7 +191,7 @@ One entrypoint, `tsx src/main.ts`:
 | Command | What it does |
 |---|---|
 | (none) | runs the bot |
-| `login` | mtcute's interactive `start()`: phone, code, 2FA password in the TTY. Creates `data/session.sqlite`. |
+| `login` | mtcute's interactive `start()`: phone, code, 2FA password in the TTY. Creates `data/session.sqlite`. Needs only `API_ID` and `API_HASH`, and skips every other startup step (no other settings, Criteria, Zone or `bot.sqlite` checks). |
 
 `login` is run as `docker compose run --rm userbot login` (a TTY and stdin by default). **Stop the daemon first** (`docker compose stop userbot`, run `login`, `docker compose up -d`), so two processes never use the session at once. The README says so; nothing enforces it.
 
@@ -235,7 +235,9 @@ Apartment for long-term rent in Batumi, Georgia.
 
 ([Docker and compose layout](issues/09-docker-layout.md))
 
-- **Dockerfile:** `FROM node:26.9.0-trixie-slim` → `npm i -g pnpm@12.4.2` → copy `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` (`allowBuilds: { better-sqlite3: false, esbuild: false }`; the binaries are prebuilt) → `pnpm install --frozen-lockfile --prod` → smoke check `RUN node -e "require('better-sqlite3')"` → `COPY src` → `USER node` → `ENTRYPOINT ["tsx", "src/main.ts"]`.
+- **Dockerfile:** `FROM node:26.9.0-trixie-slim` → `WORKDIR /app` → `npm i -g pnpm@12.4.2` → copy `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` (`allowBuilds: { better-sqlite3: true, esbuild: false }`) → `pnpm install --frozen-lockfile --prod` → smoke check `RUN node -e "require('better-sqlite3')"` → `COPY src` → `USER node` → `ENTRYPOINT ["node", "--import", "tsx", "src/main.ts"]`.
+  - better-sqlite3's install script downloads the `node-v147-linux-arm64` prebuilt binary, so the build needs network access and no toolchain. If the download fails, the script falls back to compiling and the build fails for lack of `python3 make g++`. Add those to the image only if that happens.
+  - tsx is a local dependency and not on the image's `PATH`, so the entrypoint loads it with `node --import tsx`.
 - **Compose:** one service `userbot`: `build: .`, `restart: unless-stopped`, `init: true`, `env_file: .env`, bind mount `./data:/app/data` (so the owner edits the Criteria and Zone from the laptop).
 - Runs on the owner's laptop only. The process is down while the laptop sleeps or is off, and **Posts published in those gaps are not recovered**.
 - `.gitignore`: `.env`, `data/`, `node_modules/`, `.claude/worktrees/`. `.dockerignore`: `.env`, `data`, `node_modules`, `.git`, `.scratch`, `.claude`, `.agents`, `docs`.

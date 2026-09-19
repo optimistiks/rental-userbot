@@ -25,3 +25,10 @@ Gaps no earlier ticket decided, settled here:
 - Each of the 16 "Done when" checks is marked Auto, Manual or both.
 
 Nothing is left to decide. Next step: `/to-tickets` on the spec.
+
+## Comments
+
+**2026-09-20, post-lock amendments** (review before implementation, agreed with the owner):
+- better-sqlite3 is pinned to **12.12.0**, with `allowBuilds: { better-sqlite3: true }`. The locked 12.11.1 with `false` would have installed no binary: 12.x downloads it through its install script, unlike the 13.x the research tested. 12.12.0 satisfies mtcute's `^12.10.0` and publishes `node-v147-linux-arm64`.
+- Dockerfile: `WORKDIR /app` added. The entrypoint is `node --import tsx src/main.ts`, because a local tsx isn't on `PATH`.
+- `login` needs only `API_ID`/`API_HASH` and skips the other startup checks.
