@@ -25,10 +25,11 @@ A decision-complete v0 spec at [spec.md](spec.md), with every open technical que
 - [Telegram boundary and Post shape](issues/05-telegram-boundary.md): 4-method pipeline interface (`onPost`, `downloadPhoto`, `sendToMe`, `joinedChannelIds`), `resolve-channels` calls mtcute directly; Post carries marked `chatId`, `Message.link` and lazy photo handles (`y→x→largest`, photos only, ≤6); one identity key per Post (album = grouped ID), checked at dequeue, grouping interval 1000ms; dedupe in a separate `bot.sqlite` `processed_posts` table; empty Posts and service messages are dropped.
 - [Geocoding and district boundary facts for Batumi](issues/11-geocoding-facts.md): public Nominatim works (11/14 exact hits across Latin, Cyrillic and Georgian; needs a clean street + number; policy: 1 req/s, User-Agent, cache, attribution). OSM Old Batumi 12695439 + Rustaveli 12695438 polygons, tested point-in-polygon, never Nominatim's district label. Street-only addresses use each street's precomputed share inside the zone.
 - [Judging the district from a Post's address](issues/12-district-judgement.md): one model call returns `address` (street + number or null); on a match, code geocodes it with LocationIQ (single attempt, `matchlevel` building only) and applies a **Zone veto** if the point falls outside the OSM Old Batumi + Rustaveli GeoJSON on the data volume. If the Zone can't be checked, the match goes out with `⚠️ zone not checked: …`. The Criteria keep the district line.
+- [Docker and compose layout](issues/09-docker-layout.md): `./data` bind mount with fixed `session.sqlite` + `bot.sqlite`, `CRITERIA_PATH`/`ZONE_PATH` defaults under `data/`; starting files in `data.example/`, copied by hand, missing file crashes; one `tsx src/main.ts` entrypoint with `login`/`resolve-channels` subcommands, daemon never prompts; stop the service before either; `--prod` install, better-sqlite3 smoke check, `USER node` (bind-mount write checked at acceptance).
 
 ## Not yet specified
 
-_Nothing left in the fog. Both earlier patches became tickets: [Docker and compose layout](issues/09-docker-layout.md), [Liveness signal](issues/10-liveness-signal.md) (resolved)._
+_Nothing left in the fog. Both earlier patches became tickets, now resolved: [Docker and compose layout](issues/09-docker-layout.md), [Liveness signal](issues/10-liveness-signal.md)._
 
 ## Out of scope
 
