@@ -48,6 +48,7 @@ export async function runDaemon(
       channelIds: settings.channelIds,
       evaluator: createEvaluator(settings),
       telegram,
+      dedupeStore: resources.dedupeStore,
     })
     telegram.onPost((post) => {
       void pipeline.process(post).catch((error) => {

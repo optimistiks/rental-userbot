@@ -6,6 +6,7 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createEvaluator } from './evaluator.js'
+import { openDedupeStore } from './dedupe-store.js'
 import { createPostPipeline } from './pipeline.js'
 import type { Post } from './telegram.js'
 
@@ -48,6 +49,7 @@ describe('Post pipeline', () => {
       ],
     })
     const telegram = { sendToMe: vi.fn(async () => undefined) }
+    const dedupeStore = openDedupeStore(':memory:')
     const evaluator = createEvaluator({
       modelId: 'test/model',
       promptPath,
@@ -58,6 +60,7 @@ describe('Post pipeline', () => {
       channelIds: [-1001234567890],
       evaluator,
       telegram,
+      dedupeStore,
     })
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
@@ -81,5 +84,139 @@ describe('Post pipeline', () => {
       'post https://t.me/example/4: dropped empty Post',
     )
     log.mockRestore()
+    dedupeStore.close()
+  })
+
+  it('evaluates duplicate Posts delivered before the first one is marked only once', async () => {
+    const dedupeStore = openDedupeStore(':memory:')
+    let releaseFirst!: () => void
+    const firstEvaluation = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const evaluator = {
+      evaluate: vi.fn(async () => {
+        await firstEvaluation
+        return { match: false, notes: 'No match' }
+      }),
+    }
+    const pipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator,
+      telegram: { sendToMe: vi.fn(async () => undefined) },
+      dedupeStore,
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const first = pipeline.process(post(-1001234567890, 'Flat for rent', 5))
+    const duplicate = pipeline.process(post(-1001234567890, 'Flat for rent', 5))
+
+    await vi.waitFor(() => expect(evaluator.evaluate).toHaveBeenCalledOnce())
+    releaseFirst()
+    await Promise.all([first, duplicate])
+
+    expect(evaluator.evaluate).toHaveBeenCalledOnce()
+    expect(dedupeStore.isProcessed('-1001234567890:5')).toBe(true)
+    log.mockRestore()
+    dedupeStore.close()
+  })
+
+  it('evaluates queued Posts one at a time', async () => {
+    const dedupeStore = openDedupeStore(':memory:')
+    let releaseFirst!: () => void
+    const firstEvaluation = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    let activeEvaluations = 0
+    let maximumActiveEvaluations = 0
+    const evaluationOrder: number[] = []
+    const evaluator = {
+      evaluate: vi.fn(async (post: Post) => {
+        activeEvaluations += 1
+        maximumActiveEvaluations = Math.max(maximumActiveEvaluations, activeEvaluations)
+        evaluationOrder.push(post.messageIds[0])
+
+        if (post.messageIds[0] === 6) {
+          await firstEvaluation
+        }
+
+        activeEvaluations -= 1
+        return { match: false, notes: 'No match' }
+      }),
+    }
+    const pipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator,
+      telegram: { sendToMe: vi.fn(async () => undefined) },
+      dedupeStore,
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const first = pipeline.process(post(-1001234567890, 'First flat', 6))
+    const second = pipeline.process(post(-1001234567890, 'Second flat', 7))
+
+    await vi.waitFor(() => expect(evaluator.evaluate).toHaveBeenCalledOnce())
+    expect(evaluationOrder).toEqual([6])
+    releaseFirst()
+    await Promise.all([first, second])
+
+    expect(evaluationOrder).toEqual([6, 7])
+    expect(maximumActiveEvaluations).toBe(1)
+    log.mockRestore()
+    dedupeStore.close()
+  })
+
+  it('does not re-evaluate a Processed Post across pipeline instances sharing a store', async () => {
+    const dedupeStore = openDedupeStore(':memory:')
+    const firstEvaluator = { evaluate: vi.fn(async () => ({ match: false, notes: 'No match' })) }
+    const firstPipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator: firstEvaluator,
+      telegram: { sendToMe: vi.fn(async () => undefined) },
+      dedupeStore,
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const firstPost = post(-1001234567890, 'Already processed', 8)
+
+    await firstPipeline.process(firstPost)
+
+    const secondEvaluator = { evaluate: vi.fn(async () => ({ match: false, notes: 'No match' })) }
+    const secondPipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator: secondEvaluator,
+      telegram: { sendToMe: vi.fn(async () => undefined) },
+      dedupeStore,
+    })
+
+    await secondPipeline.process(firstPost)
+
+    expect(firstEvaluator.evaluate).toHaveBeenCalledOnce()
+    expect(secondEvaluator.evaluate).not.toHaveBeenCalled()
+    log.mockRestore()
+    dedupeStore.close()
+  })
+
+  it('marks a Post after a failed notification so it is not retried', async () => {
+    const dedupeStore = openDedupeStore(':memory:')
+    const evaluator = {
+      evaluate: vi.fn(async () => ({ match: true, notes: 'Looks good' })),
+    }
+    const telegram = {
+      sendToMe: vi.fn(async () => {
+        throw new Error('Saved Messages unavailable')
+      }),
+    }
+    const pipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator,
+      telegram,
+      dedupeStore,
+    })
+    const postToProcess = post(-1001234567890, 'Flat for rent', 9)
+
+    await expect(pipeline.process(postToProcess)).rejects.toThrow('Saved Messages unavailable')
+    await pipeline.process(postToProcess)
+
+    expect(evaluator.evaluate).toHaveBeenCalledOnce()
+    expect(telegram.sendToMe).toHaveBeenCalledOnce()
+    expect(dedupeStore.isProcessed('-1001234567890:9')).toBe(true)
+    dedupeStore.close()
   })
 })
