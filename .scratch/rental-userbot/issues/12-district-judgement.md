@@ -32,3 +32,9 @@ Given [Geocoding and district boundary facts for Batumi](11-geocoding-facts.md),
   - how to treat street-only addresses (precomputed share of each street inside the zone; is partial "uncertain" a lenient match?)
   - whether the owner accepts the OSM Old Batumi + Rustaveli outlines or adjusts them
   - the Nominatim policy duties: User-Agent, 1 request per second, cache, attribution, configurable base URL
+
+**Owner decision (2026-09-19): use LocationIQ from the start.** The token is in `.env` as `LOCATIONIQ_TOKEN`, and `.env` is now in `.gitignore`. LocationIQ is hosted Nominatim (same OSM data, Nominatim-compatible API), so the geocoding findings still apply; public Nominatim stays out.
+- Free-plan terms to respect, from [research/geocoding.md](../research/geocoding.md): 5,000 requests a day, 2 per second, 60 per minute; results cached for **at most 48 hours**; the free plan requires a "Search by LocationIQ.com" link. Decide whether and where that link appears, since nothing is displayed apart from Saved Messages.
+- The token goes in the request query string, so request URLs must never be logged or put into ⚠️ messages.
+- The exact LocationIQ endpoint and response shape weren't checked live. Confirm them against LocationIQ's docs before writing the msw fixture.
+- Keep the base URL as a config setting, so the provider can still be swapped.
