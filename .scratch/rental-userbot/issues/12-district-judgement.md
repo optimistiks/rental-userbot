@@ -1,7 +1,7 @@
 # Judging the district from a Post's address
 
 Type: grilling
-Status: open
+Status: resolved
 Blocked by: 11
 
 ## Question
@@ -38,3 +38,45 @@ Given [Geocoding and district boundary facts for Batumi](11-geocoding-facts.md),
 - The token goes in the request query string, so request URLs must never be logged or put into ⚠️ messages.
 - The exact LocationIQ endpoint and response shape weren't checked live. Confirm them against LocationIQ's docs before writing the msw fixture.
 - Keep the base URL as a config setting, so the provider can still be swapped.
+
+## Answer
+
+Decided with the owner (2026-09-19), building on [Geocoding and district boundary facts for Batumi](11-geocoding-facts.md). The LocationIQ API facts, including a live check with the owner's token, are in [research/locationiq-search.md](../research/locationiq-search.md). New glossary terms: **Zone** and **Zone veto** ([CONTEXT.md](../../CONTEXT.md)).
+
+**Where the check happens: one model call plus a code veto**
+- No tool loop and no second call. The existing Evaluator call gets one more output field, `address`: the first street and house number as the Post writes it, cleaned of extra words, or `null` if there's no house number. There's no transliteration and there are no alternative spellings.
+- The "Old Town or Rustaveli" line **stays in the Criteria**. The model judges district names from it, and the lenient rule still applies.
+- Geocoding runs only when the Verdict is *match* and `address` isn't null.
+- **Zone veto:** a hit with `matchlevel: "building"` whose point lies outside the Zone turns the *match* into *no match*. It's logged with the address and point, and nothing is sent. The veto can only take a match away.
+- The precomputed street shares are dropped. A street-only address never triggers the veto.
+
+**The Zone**
+- The OSM outlines of Old Batumi (relation 12695439) and Rustaveli (relation 12695438), exported to one GeoJSON file. The owner accepts them as a starting point and can adjust them in geojson.io.
+- The repo commits a starting copy. The bot reads the file from the data volume at `ZONE_PATH`, default `data/zone.geojson`.
+- It's validated at startup (the bot crashes if the file is missing or invalid) and re-read before every check, like the Criteria. A runtime read failure is an evaluation failure (⚠️).
+- The point check uses `@turf/boolean-point-in-polygon`, pinned to an exact version.
+
+**The geocoder (LocationIQ)**
+- `GET` `GEOCODER_URL`, default `https://eu1.locationiq.com/v1/search`, with `key=<LOCATIONIQ_TOKEN>`, `q=<address>, Batumi`, `countrycodes=ge`, `format=json`, `limit=1` and `matchquality=1`.
+- `LOCATIONIQ_TOKEN` is required; the bot crashes at startup if it's missing.
+- One attempt with a 10s timeout, no retries, no cache and no throttle. Geocoding only runs on matches, one Post at a time, so the free plan's 2 per second, 60 per minute and 5,000 per day are out of reach.
+- Request URLs contain the token, so they are never logged or shown.
+- No attribution, because this is personal, non-commercial use.
+- **Use `matchlevel` to judge a hit, not `matchcode`.** Live check: a house number that doesn't exist returns `matchlevel: street` with `matchcode: exact`. A misspelled street returns **HTTP 200** with `matchlevel: city` (the Batumi centroid), not a 404.
+
+**When the Zone can't be checked.** Any of these can happen when the model said *match* and gave an address:
+
+| Outcome | Result |
+|---|---|
+| `matchlevel: street` | the *match* goes out with the line `⚠️ zone not checked: street only` |
+| 404, or a level coarser than street | the *match* goes out with the line `⚠️ zone not checked: not found` |
+| any other error (timeout, 5xx, 429, 401, bad body) | the *match* goes out with the line `⚠️ zone not checked: <label>`, following the Evaluator's `<label>: <first line>` rules, never including the URL |
+| `address` is null | nothing to check; no line is added |
+
+Match message format: `<link>\n<reason>\n⚠️ zone not checked: …`. The last line appears only when the Zone couldn't be checked.
+
+**Effect on resolved decisions**
+- [Evaluator contract and failure classes](06-evaluator-contract.md): the output schema becomes `{ match, reason, address }`, and the six model fixtures gain `address`. The 3-attempt retry rules still cover only the model call. The geocoder has its own single attempt.
+- [Telegram boundary and Post shape](05-telegram-boundary.md): no change.
+- New LocationIQ msw fixtures: building inside, building outside, street-level fallback, city-level fallback, 404, 401 and timeout. Their shapes are taken from the live responses.
+- [Docker and compose layout](09-docker-layout.md): the data volume also holds `zone.geojson`. New settings: `ZONE_PATH`, `LOCATIONIQ_TOKEN` and `GEOCODER_URL`.

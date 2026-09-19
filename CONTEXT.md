@@ -35,3 +35,11 @@ _Avoid_: score, rating, result
 **Match**:
 A Verdict saying the Listing does not clearly violate any criterion. Missing information never prevents a match.
 _Avoid_: hit, pass
+
+**Zone**:
+The area the owner will live in, drawn as an outline in a file the owner edits without code changes. It sits alongside the Criteria and does not replace the location line in them.
+_Avoid_: district, area, polygon
+
+**Zone veto**:
+Turning a Match into *no match* because the Post's address was placed at building level outside the Zone. It can only take a Match away, never grant one. When an address is given but can't be placed, the Match stands and the owner is warned that the Zone was not checked.
+_Avoid_: override, filter
