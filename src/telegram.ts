@@ -1,5 +1,5 @@
 import { TelegramClient } from '@mtcute/node'
-import type { FileDownloadLocation } from '@mtcute/node'
+import type { FileDownloadLocation, Message } from '@mtcute/node'
 
 import type { LoginSettings, Settings } from './config.js'
 
@@ -37,7 +37,12 @@ interface DialogLike {
   chat?: DialogPeer
 }
 
+interface MessageEmitter<T> {
+  add(listener: (value: T) => void): void
+}
+
 export interface TelegramClientLike {
+  onNewMessage: MessageEmitter<Message>
   sendText(
     chatId: 'me',
     text: string,
@@ -93,10 +98,37 @@ const photoLocations = new WeakMap<object, FileDownloadLocation>()
 
 export function createTelegramAdapter(client: TelegramClientLike): Telegram {
   const postHandlers: Array<(post: Post) => void> = []
+  let postStreamStarted = false
+
+  function startPostStream(): void {
+    if (postStreamStarted) {
+      return
+    }
+
+    postStreamStarted = true
+    client.onNewMessage.add((message) => {
+      if (message.isService) {
+        return
+      }
+
+      const post: Post = {
+        chatId: message.chat.id,
+        messageIds: [message.id],
+        text: message.text,
+        photos: [],
+        link: message.link,
+      }
+
+      for (const handler of postHandlers) {
+        handler(post)
+      }
+    })
+  }
 
   return {
     onPost(handler) {
       postHandlers.push(handler)
+      startPostStream()
     },
     async downloadPhoto(ref) {
       const location = photoLocations.get(ref)

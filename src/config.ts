@@ -3,6 +3,7 @@ type ProcessEnv = NodeJS.ProcessEnv
 export const MODEL_ID = 'google/gemini-3.8-flash'
 export const GEOCODER_URL = 'https://eu1.locationiq.com/v1/search'
 export const CRITERIA_PATH = 'data/criteria.md'
+export const PROMPT_PATH = 'data/prompt.md'
 export const ZONE_PATH = 'data/zone.geojson'
 export const BOT_DATABASE_PATH = 'data/bot.sqlite'
 
@@ -15,6 +16,7 @@ export interface Settings {
   locationIqToken: string
   geocoderUrl: string
   criteriaPath: string
+  promptPath: string
   zonePath: string
 }
 
@@ -78,6 +80,7 @@ export function readSettings(env: ProcessEnv = process.env): Settings {
     locationIqToken: required(env, 'LOCATIONIQ_TOKEN'),
     geocoderUrl: optional(env, 'GEOCODER_URL', GEOCODER_URL),
     criteriaPath: optional(env, 'CRITERIA_PATH', CRITERIA_PATH),
+    promptPath: optional(env, 'PROMPT_PATH', PROMPT_PATH),
     zonePath: optional(env, 'ZONE_PATH', ZONE_PATH),
   }
 }

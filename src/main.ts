@@ -8,6 +8,8 @@ import {
   type SessionClient,
   type TelegramClientLike,
 } from './telegram.js'
+import { createEvaluator } from './evaluator.js'
+import { createPostPipeline } from './pipeline.js'
 import { announceStartup, initializeStartup } from './startup.js'
 
 type ManagedClient = TelegramClientLike & SessionClient & {
@@ -42,6 +44,16 @@ export async function runDaemon(
     await startDaemonSession(client)
     const telegram = createTelegramAdapter(client)
     await announceStartup(telegram, settings.channelIds)
+    const pipeline = createPostPipeline({
+      channelIds: settings.channelIds,
+      evaluator: createEvaluator(settings),
+      telegram,
+    })
+    telegram.onPost((post) => {
+      void pipeline.process(post).catch((error) => {
+        console.error(`post ${post.link}: pipeline failed`, error)
+      })
+    })
   } catch (error) {
     resources.dedupeStore.close()
 

@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Settings } from './config.js'
 import { announceStartup, initializeStartup } from './startup.js'
 
-const settings = (criteriaPath: string): Settings => ({
+const settings = (criteriaPath: string, promptPath = criteriaPath): Settings => ({
   apiId: 123456,
   apiHash: 'hash',
   channelIds: [-1001234567890],
@@ -16,6 +16,7 @@ const settings = (criteriaPath: string): Settings => ({
   locationIqToken: 'locationiq-token',
   geocoderUrl: 'http://localhost:1234/search',
   criteriaPath,
+  promptPath,
   zonePath: 'zone.geojson',
 })
 
@@ -28,6 +29,7 @@ describe('initializeStartup', () => {
     const resources = initializeStartup(settings(criteriaPath), ':memory:')
 
     expect(resources.criteria).toBe('Criteria text')
+    expect(resources.prompt).toBe('Criteria text')
     expect(resources.dedupeStore.isProcessed('chat:1')).toBe(false)
     resources.dedupeStore.close()
   })
@@ -35,6 +37,17 @@ describe('initializeStartup', () => {
   it('fails before opening the database when Criteria cannot be read', () => {
     expect(() => initializeStartup(settings('/missing/criteria.md'), ':memory:')).toThrowError(
       /Criteria file/,
+    )
+  })
+
+  it('names the Prompt file when it cannot be read', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
+    const criteriaPath = join(directory, 'criteria.md')
+    const promptPath = join(directory, 'prompt.md')
+    writeFileSync(criteriaPath, 'Criteria text')
+
+    expect(() => initializeStartup(settings(criteriaPath, promptPath), ':memory:')).toThrowError(
+      new RegExp(`Prompt file .*${promptPath}`),
     )
   })
 })

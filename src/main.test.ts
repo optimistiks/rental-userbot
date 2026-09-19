@@ -19,6 +19,7 @@ describe('runLogin', () => {
       sendText: vi.fn(),
       iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(),
+      onNewMessage: { add: vi.fn() },
     }))
 
     await runLogin(loginSettings, makeClient)
@@ -43,6 +44,7 @@ describe('runDaemon', () => {
       locationIqToken: 'locationiq-token',
       geocoderUrl: 'http://localhost:1234/search',
       criteriaPath,
+      promptPath: criteriaPath,
       zonePath: 'zone.geojson',
     } satisfies Settings
     const events: string[] = []
@@ -55,11 +57,12 @@ describe('runDaemon', () => {
         yield { peer: { type: 'chat', chatType: 'channel', id: -1001234567890 } }
       },
       downloadAsBuffer: vi.fn(),
+      onNewMessage: { add: vi.fn(() => events.push('stream')) },
     }
 
     await runDaemon(settings, () => client, join(directory, 'bot.sqlite'))
 
-    expect(events).toEqual(['start', 'dialogs', 'send'])
+    expect(events).toEqual(['start', 'dialogs', 'send', 'stream'])
     expect(client.sendText).toHaveBeenCalledWith(
       'me',
       '🟢 started, watching 1/1 channels',
@@ -80,6 +83,7 @@ describe('runDaemon', () => {
       locationIqToken: 'locationiq-token',
       geocoderUrl: 'http://localhost:1234/search',
       criteriaPath,
+      promptPath: criteriaPath,
       zonePath: 'zone.geojson',
     } satisfies Settings
     const client = {
@@ -92,6 +96,7 @@ describe('runDaemon', () => {
         yield { peer: { type: 'chat', chatType: 'channel', id: -1001234567890 } }
       },
       downloadAsBuffer: vi.fn(),
+      onNewMessage: { add: vi.fn() },
     }
 
     await expect(

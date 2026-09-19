@@ -1,11 +1,13 @@
 import type { Settings } from './config.js'
 import { openDedupeStore, type DedupeStore } from './dedupe-store.js'
 import { readCriteriaFile } from './criteria.js'
+import { readPromptFile } from './prompt.js'
 import type { Telegram } from './telegram.js'
 
 export interface StartupResources {
   settings: Settings
   criteria: string
+  prompt: string
   dedupeStore: DedupeStore
 }
 
@@ -14,8 +16,9 @@ export function initializeStartup(
   databasePath?: string,
 ): StartupResources {
   const criteria = readCriteriaFile(settings.criteriaPath)
+  const prompt = readPromptFile(settings.promptPath)
   const dedupeStore = openDedupeStore(databasePath)
-  return { settings, criteria, dedupeStore }
+  return { settings, criteria, prompt, dedupeStore }
 }
 
 export function startupMessage(

@@ -37,12 +37,83 @@ describe('telegram client setup', () => {
 })
 
 describe('Telegram adapter', () => {
+  it('starts the Post stream when a handler is registered', () => {
+    const onNewMessage = { add: vi.fn() }
+    const client = {
+      sendText: vi.fn(),
+      iterDialogs: async function* () {},
+      downloadAsBuffer: vi.fn(),
+      onNewMessage,
+    }
+    const telegram = createTelegramAdapter(client)
+    const handler = vi.fn()
+
+    telegram.onPost(handler)
+
+    expect(onNewMessage.add).toHaveBeenCalledOnce()
+  })
+
+  it('turns a non-service message into a text-only Post', () => {
+    const onNewMessage = { add: vi.fn() }
+    const client = {
+      sendText: vi.fn(),
+      iterDialogs: async function* () {},
+      downloadAsBuffer: vi.fn(),
+      onNewMessage,
+    }
+    const telegram = createTelegramAdapter(client)
+    const handler = vi.fn()
+    telegram.onPost(handler)
+    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0]
+
+    onNewMessageHandler({
+      chat: { id: -1001234567890 },
+      id: 42,
+      isService: false,
+      link: 'https://t.me/example/42',
+      text: 'Flat for rent',
+    })
+
+    expect(handler).toHaveBeenCalledWith({
+      chatId: -1001234567890,
+      messageIds: [42],
+      text: 'Flat for rent',
+      photos: [],
+      link: 'https://t.me/example/42',
+    })
+  })
+
+  it('does not emit service messages', () => {
+    const onNewMessage = { add: vi.fn() }
+    const client = {
+      sendText: vi.fn(),
+      iterDialogs: async function* () {},
+      downloadAsBuffer: vi.fn(),
+      onNewMessage,
+    }
+    const telegram = createTelegramAdapter(client)
+    const handler = vi.fn()
+    telegram.onPost(handler)
+    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0]
+
+    onNewMessageHandler({
+      chat: { id: -1001234567890 },
+      id: 43,
+      isService: true,
+      link: 'https://t.me/example/43',
+      text: '',
+    })
+
+    expect(handler).not.toHaveBeenCalled()
+  })
+
   it('sends to Saved Messages with link previews disabled', async () => {
     const sendText = vi.fn(async () => undefined)
     const client = {
       sendText,
       iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(),
+      onNewMessage: { add: vi.fn() },
     }
     const telegram = createTelegramAdapter(client)
 
@@ -65,6 +136,7 @@ describe('Telegram adapter', () => {
       sendText: vi.fn(),
       iterDialogs,
       downloadAsBuffer: vi.fn(),
+      onNewMessage: { add: vi.fn() },
     }
     const telegram = createTelegramAdapter(client)
 

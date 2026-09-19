@@ -4,6 +4,7 @@ import {
   CRITERIA_PATH,
   GEOCODER_URL,
   MODEL_ID,
+  PROMPT_PATH,
   readLoginSettings,
   readSettings,
   ZONE_PATH,
@@ -37,6 +38,7 @@ describe('readSettings', () => {
       locationIqToken: 'locationiq-token',
       geocoderUrl: GEOCODER_URL,
       criteriaPath: CRITERIA_PATH,
+      promptPath: PROMPT_PATH,
       zonePath: ZONE_PATH,
     })
   })
@@ -48,12 +50,14 @@ describe('readSettings', () => {
         MODEL_ID: 'test/model',
         GEOCODER_URL: 'http://localhost:1234/search',
         CRITERIA_PATH: '/tmp/criteria.md',
+        PROMPT_PATH: '/tmp/prompt.md',
         ZONE_PATH: '/tmp/zone.geojson',
       }),
     ).toMatchObject({
       modelId: 'test/model',
       geocoderUrl: 'http://localhost:1234/search',
       criteriaPath: '/tmp/criteria.md',
+      promptPath: '/tmp/prompt.md',
       zonePath: '/tmp/zone.geojson',
     })
   })
