@@ -69,8 +69,8 @@ docker compose up -d
 
 **Nothing restarts the bot by itself.** If it crashes, or the laptop reboots, it stays down until you run `docker compose up -d` again. That's deliberate: an automatic restart would turn a bad config or a rate limit into a loop of reconnections, which is the surest way to get an account limited. The 🟢 message not arriving is your signal.
 
-It sends `🟢 started, watching N/M channels` to Saved Messages, so you know it's alive. If any channel you
-listed isn't one your account has joined, that message says so.
+It sends `🟢 started, watching N channels` to Saved Messages, so you know it's alive. That N is the
+Watchlist, not a guess at which channels Telegram has in your dialog list.
 
 Watch what it's doing:
 

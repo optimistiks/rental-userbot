@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
-import type { DialogLike, Post, SessionClient, TelegramClientLike } from "./telegram.js";
+import type { Post, SessionClient, TelegramClientLike } from "./telegram.js";
 
 import {
   DEVICE_INFO,
@@ -48,9 +48,6 @@ function clientWithSendSpy(): { client: TelegramClientLike; sendText: SendTextSp
   return {
     client: {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        /* No dialogs in these tests. */
-      },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
       sendText,
@@ -109,9 +106,6 @@ describe("telegram adapter", () => {
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        /* No dialogs in this test. */
-      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -131,9 +125,6 @@ describe("telegram adapter", () => {
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        /* No dialogs in this test. */
-      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -168,9 +159,6 @@ describe("telegram adapter", () => {
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        /* No dialogs in this test. */
-      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -219,9 +207,6 @@ describe("telegram adapter", () => {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>((location) =>
         Promise.resolve(location as unknown as Uint8Array),
       ),
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        /* No dialogs in this test. */
-      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -287,9 +272,6 @@ describe("telegram adapter", () => {
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        /* No dialogs in this test. */
-      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -331,9 +313,6 @@ describe("telegram adapter", () => {
     };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        /* No dialogs in this test. */
-      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -400,29 +379,5 @@ describe("telegram adapter", () => {
     const sent = lastSentText(sendText);
     expect(sent).toHaveLength(4096);
     expect(sent).toMatch(/^#rental_userbot\n/u);
-  });
-
-  it("lists marked IDs for joined channels, including archived dialogs", async () => {
-    expect.hasAssertions();
-    /* Only an async generator satisfies AsyncIterable; nothing here awaits. */
-    // oxlint-disable-next-line typescript/require-await
-    const iterDialogs = vi.fn<TelegramClientLike["iterDialogs"]>(async function* iterDialogs() {
-      yield { peer: { chatType: "channel", id: -1_001_234_567_890, type: "chat" } };
-      yield { peer: { chatType: "supergroup", id: -1_002_222_222_222, type: "chat" } };
-      yield { peer: { chatType: "channel", id: -1_009_876_543_210, type: "chat" } };
-    });
-    const client = {
-      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs,
-      onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
-      onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
-      sendText: vi.fn<TelegramClientLike["sendText"]>(),
-    };
-    const telegram = createTelegramAdapter(client);
-
-    await expect(telegram.joinedChannelIds()).resolves.toStrictEqual([
-      -1_001_234_567_890, -1_009_876_543_210,
-    ]);
-    expect(iterDialogs).toHaveBeenCalledWith({ archived: "keep" });
   });
 });

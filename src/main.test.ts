@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Settings } from "./config.js";
 import type { ClientFactory } from "./main.js";
 import type { SessionLock } from "./session-lock.js";
-import type { DialogLike, SessionClient, TelegramClientLike } from "./telegram.js";
+import type { SessionClient, TelegramClientLike } from "./telegram.js";
 
 import { runDaemon, runLogin } from "./main.js";
 
@@ -28,9 +28,6 @@ describe("runLogin", () => {
     const makeClient = vi.fn<ClientFactory>(() => ({
       destroy,
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        /* No dialogs in this test. */
-      },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -46,7 +43,7 @@ describe("runLogin", () => {
 });
 
 describe("runDaemon", () => {
-  it("connects before checking membership and announcing startup", async () => {
+  it("connects before announcing startup", async () => {
     expect.hasAssertions();
     const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
     const criteriaPath = path.join(directory, "criteria.md");
@@ -69,12 +66,6 @@ describe("runDaemon", () => {
     const client = {
       destroy: vi.fn<() => Promise<void>>(() => Promise.resolve()),
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      /* Only an async generator satisfies AsyncIterable; nothing here awaits. */
-      // oxlint-disable-next-line typescript/require-await
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        events.push("dialogs");
-        yield { peer: { chatType: "channel", id: -1_001_234_567_890, type: "chat" } };
-      },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: {
         add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>(() => {
@@ -93,10 +84,10 @@ describe("runDaemon", () => {
       noLock(),
     );
 
-    expect(events).toStrictEqual(["start", "dialogs", "send", "stream"]);
+    expect(events).toStrictEqual(["start", "send", "stream"]);
     expect(client.sendText).toHaveBeenCalledWith(
       "me",
-      "#rental_userbot\n🟢 started, watching 1/1 channels",
+      "#rental_userbot\n🟢 started, watching 1 channel",
       { disableWebPreview: true },
     );
   });
@@ -123,11 +114,6 @@ describe("runDaemon", () => {
     const client = {
       destroy: vi.fn<() => Promise<void>>(() => Promise.resolve()),
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      /* Only an async generator satisfies AsyncIterable; nothing here awaits. */
-      // oxlint-disable-next-line typescript/require-await
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        yield { peer: { chatType: "channel", id: -1_001_234_567_890, type: "chat" } };
-      },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
       sendText: vi.fn<TelegramClientLike["sendText"]>(() =>

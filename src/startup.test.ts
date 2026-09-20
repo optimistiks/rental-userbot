@@ -89,46 +89,30 @@ describe("initializeStartup", () => {
 });
 
 describe("announceStartup", () => {
-  it("sends the startup message and reports missing channels", async () => {
+  it("sends a startup Notice for the Watchlist size, not join state", async () => {
     expect.hasAssertions();
     const telegram = {
-      joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(() =>
-        Promise.resolve([-1_001_234_567_890]),
-      ),
       sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
     };
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {
-      /* Keep test output quiet. */
-    });
     const log = vi.spyOn(console, "log").mockImplementation(() => {
       /* Keep test output quiet. */
     });
 
     await announceStartup(telegram, [-1_001_234_567_890, -1_009_876_543_210]);
 
-    expect(warn).toHaveBeenCalledWith("channel not joined: -1009876543210");
-    expect(log).toHaveBeenCalledWith(
-      "startup: 🟢 started, watching 1/2 channels; not joined: -1009876543210",
-    );
-    expect(telegram.sendToMe).toHaveBeenCalledWith(
-      "🟢 started, watching 1/2 channels\nnot joined: -1009876543210",
-    );
-
-    warn.mockRestore();
+    expect(log).toHaveBeenCalledWith("startup: 🟢 started, watching 2 channels");
+    expect(telegram.sendToMe).toHaveBeenCalledWith("🟢 started, watching 2 channels");
     log.mockRestore();
   });
 
-  it("omits the not-joined line when every channel is joined", async () => {
+  it("says watching 0 channels when the Watchlist is empty", async () => {
     expect.hasAssertions();
     const telegram = {
-      joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(() =>
-        Promise.resolve([-1_001_234_567_890]),
-      ),
       sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
     };
 
-    await announceStartup(telegram, [-1_001_234_567_890]);
+    await announceStartup(telegram, []);
 
-    expect(telegram.sendToMe).toHaveBeenCalledWith("🟢 started, watching 1/1 channels");
+    expect(telegram.sendToMe).toHaveBeenCalledWith("🟢 started, watching 0 channels");
   });
 });

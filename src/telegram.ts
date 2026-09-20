@@ -51,18 +51,6 @@ interface Telegram {
   onPost: (handler: (post: Post) => void) => void;
   downloadPhoto: (ref: PhotoRef) => Promise<Uint8Array>;
   sendToMe: (text: string) => Promise<void>;
-  joinedChannelIds: () => Promise<number[]>;
-}
-
-interface DialogPeer {
-  type?: string;
-  chatType?: string;
-  id: number;
-}
-
-interface DialogLike {
-  peer?: DialogPeer;
-  chat?: DialogPeer;
 }
 
 interface MessageEmitter<T> {
@@ -73,7 +61,6 @@ interface TelegramClientLike {
   onNewMessage: MessageEmitter<Message>;
   onMessageGroup: MessageEmitter<Message[]>;
   sendText: (chatId: "me", text: string, params: { disableWebPreview: true }) => Promise<unknown>;
-  iterDialogs: (params: { archived: "keep" }) => AsyncIterable<DialogLike>;
   downloadAsBuffer: (location: FileDownloadLocation) => Promise<Uint8Array>;
 }
 
@@ -184,20 +171,6 @@ function createTelegramAdapter(client: TelegramClientLike): Telegram {
       }
       return client.downloadAsBuffer(location);
     },
-    async joinedChannelIds() {
-      const channelIds: number[] = [];
-      const seen = new Set<number>();
-
-      for await (const dialog of client.iterDialogs({ archived: "keep" })) {
-        const peer = dialog.peer ?? dialog.chat;
-        if (peer !== undefined && isChannel(peer) && !seen.has(peer.id)) {
-          seen.add(peer.id);
-          channelIds.push(peer.id);
-        }
-      }
-
-      return channelIds;
-    },
     onPost(handler) {
       postHandlers.push(handler);
       startPostStream();
@@ -213,17 +186,12 @@ function taggedForSavedMessages(text: string): string {
   return `${SAVED_MESSAGES_TAG}\n${text}`.slice(0, MAX_TELEGRAM_MESSAGE_LENGTH);
 }
 
-function isChannel(peer: DialogPeer): boolean {
-  return peer.type === "channel" || peer.chatType === "channel" || peer.chatType === "gigagroup";
-}
-
 export {
   SESSION_PATH,
   MESSAGE_GROUPING_INTERVAL,
   MAX_FLOOD_WAIT_MS,
   MAX_FLOOD_RETRIES,
   DEVICE_INFO,
-  type DialogLike,
   type PhotoRef,
   type Post,
   type Telegram,
