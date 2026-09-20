@@ -12,6 +12,7 @@ import { errorMessage } from './errors.js'
 import { createGeocoder } from './geocoder.js'
 import { createPostPipeline } from './pipeline.js'
 import { initializeSentry, type ErrorReporter } from './sentry.js'
+import { acquireSessionLock, type SessionLock } from './session-lock.js'
 import { announceStartup, initializeStartup } from './startup.js'
 import { createZoneChecker } from './zone.js'
 
@@ -24,6 +25,7 @@ type ClientFactory = (settings: Pick<Settings, 'apiId' | 'apiHash'>) => ManagedC
 export async function runLogin(
   settings: LoginSettings,
   makeClient: ClientFactory = createTelegramClient,
+  lock: SessionLock = acquireSessionLock(),
 ): Promise<void> {
   const client = makeClient(settings)
 
@@ -31,6 +33,7 @@ export async function runLogin(
     await client.start()
   } finally {
     await client.destroy()
+    lock.release()
   }
 }
 
@@ -39,6 +42,7 @@ export async function runDaemon(
   makeClient: ClientFactory = createTelegramClient,
   databasePath?: string,
   errorReporter: ErrorReporter = initializeSentry(settings.sentryDsn),
+  lock: SessionLock = acquireSessionLock(),
 ): Promise<void> {
   let resources: ReturnType<typeof initializeStartup> | undefined
   let client: ManagedClient | undefined
@@ -77,6 +81,7 @@ export async function runDaemon(
     })
   } catch (error) {
     errorReporter.captureException(error)
+    lock.release()
     resources?.dedupeStore.close()
 
     if (client !== undefined) {

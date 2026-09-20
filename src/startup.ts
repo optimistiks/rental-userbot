@@ -46,11 +46,21 @@ export async function announceStartup(
   telegram: Pick<Telegram, 'joinedChannelIds' | 'sendToMe'>,
   channelIds: number[],
 ): Promise<void> {
-  const joinedChannelIds = await telegram.joinedChannelIds()
-  const message = startupMessage(channelIds, joinedChannelIds)
-  const missing = unjoinedChannelIds(channelIds, joinedChannelIds)
+  // Best-effort: the membership check is a warning, so a flood wait or a failed
+  // dialog scan must not take the bot down with it.
+  let joinedChannelIds: number[] | undefined
+  try {
+    joinedChannelIds = await telegram.joinedChannelIds()
+  } catch (error) {
+    console.warn('could not check channel membership', error)
+  }
 
-  for (const channelId of missing) {
+  const message =
+    joinedChannelIds === undefined
+      ? `🟢 started, watching ${channelIds.length} channels\nmembership not checked`
+      : startupMessage(channelIds, joinedChannelIds)
+
+  for (const channelId of unjoinedChannelIds(channelIds, joinedChannelIds ?? channelIds)) {
     console.warn(`channel not joined: ${channelId}`)
   }
 

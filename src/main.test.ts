@@ -9,6 +9,10 @@ import { runDaemon, runLogin } from './main.js'
 
 const loginSettings = { apiId: 123456, apiHash: 'hash' }
 
+function noLock() {
+  return { release: () => undefined }
+}
+
 describe('runLogin', () => {
   it('starts an interactive client without reading daemon settings', async () => {
     const start = vi.fn(async () => undefined)
@@ -23,7 +27,7 @@ describe('runLogin', () => {
       onMessageGroup: { add: vi.fn() },
     }))
 
-    await runLogin(loginSettings, makeClient)
+    await runLogin(loginSettings, makeClient, noLock())
 
     expect(makeClient).toHaveBeenCalledWith(loginSettings)
     expect(start).toHaveBeenCalledWith()
@@ -62,7 +66,7 @@ describe('runDaemon', () => {
       onMessageGroup: { add: vi.fn() },
     }
 
-    await runDaemon(settings, () => client, join(directory, 'bot.sqlite'))
+    await runDaemon(settings, () => client, join(directory, 'bot.sqlite'), undefined, noLock())
 
     expect(events).toEqual(['start', 'dialogs', 'send', 'stream'])
     expect(client.sendText).toHaveBeenCalledWith(
@@ -103,7 +107,7 @@ describe('runDaemon', () => {
     }
 
     await expect(
-      runDaemon(settings, () => client, join(directory, 'bot.sqlite')),
+      runDaemon(settings, () => client, join(directory, 'bot.sqlite'), undefined, noLock()),
     ).rejects.toThrow('Saved Messages unavailable')
     expect(client.destroy).toHaveBeenCalledOnce()
   })

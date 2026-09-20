@@ -59,6 +59,8 @@ Then start it:
 docker compose up -d
 ```
 
+**Nothing restarts the bot by itself.** If it crashes, or the laptop reboots, it stays down until you run `docker compose up -d` again. That's deliberate: an automatic restart would turn a bad config or a rate limit into a loop of reconnections, which is the surest way to get an account limited. The 🟢 message not arriving is your signal.
+
 It sends `🟢 started, watching N/M channels` to Saved Messages, so you know it's alive. If any channel you
 listed isn't one your account has joined, that message says so.
 
@@ -68,7 +70,7 @@ Watch what it's doing:
 docker compose logs -f userbot
 ```
 
-**Always stop the daemon before logging in again,** so that two processes never share the Telegram session:
+**Always stop the daemon before logging in again,** so that two processes never share the Telegram session. The bot also enforces this with a lock file, and the second one to start refuses to run:
 
 ```sh
 docker compose stop userbot
@@ -112,6 +114,17 @@ your account, so keep `data/` off any shared disk.
 
 Startup fails immediately, naming what's wrong, if a required variable is missing or a file listed above
 can't be read.
+
+## Keeping your account safe
+
+Telegram doesn't love automation on personal accounts, so the bot behaves like a quiet client:
+
+- It writes **only to your own Saved Messages**, never to anyone else, so there's nothing for anyone to report.
+- It **never joins, leaves or opens channels**. You join them yourself.
+- It **waits out rate limits** (up to five minutes) instead of retrying into them, and nothing restarts it into one.
+- Only **one process at a time** can use the session, so it's never revoked for being used twice.
+
+What's up to you: run it on an established account rather than a fresh one, keep it on your normal home connection rather than a datacenter VPN, and stay logged in on your phone or desktop client too.
 
 ## Good to know
 

@@ -189,15 +189,16 @@ In this order. Any failure crashes the process with a message naming the cause.
 1. Read the settings. `API_ID`, `API_HASH`, `CHANNEL_IDS`, `AI_GATEWAY_API_KEY` and `LOCATIONIQ_TOKEN` are required. If `SENTRY_DSN` is set, start Sentry.
 2. Check that the prompt file and the Criteria file exist and can be read, and that the Zone file exists and is valid GeoJSON with at least one Polygon or MultiPolygon.
 3. Open `data/bot.sqlite` and create the table if it's missing.
-4. Connect with the saved session. **The daemon never prompts:** if there's no valid session, it crashes with "run login first". Under `restart: unless-stopped` this loops; accepted.
-5. Compare `CHANNEL_IDS` with `joinedChannelIds()`. Log a warning for each ID that isn't joined.
-6. Send the startup message to `me`. If this send fails, crash.
+4. Take the **session lock** (`data/session.lock`, a SQLite write transaction held for the life of the process). If another instance holds it, crash saying so. This is what stops the daemon and `login` from using one auth key at once, which Telegram answers by revoking the session. The operating system drops the lock when the process dies, so a crash never leaves a stale one.
+5. Connect with the saved session. **The daemon never prompts:** if there's no valid session, it crashes with "run login first". **Nothing restarts it** (see § Deployment), so a crash means the bot is down until it is started by hand.
+6. Compare `CHANNEL_IDS` with `joinedChannelIds()`. Log a warning for each ID that isn't joined. **Best-effort:** this is a full dialog scan, so a failure (a flood wait, say) is logged and the startup message says `membership not checked` instead of taking the bot down.
+7. Send the startup message to `me`. If this send fails, crash.
    ```
    🟢 started, watching 14/15 channels
    not joined: -1001234567890
    ```
-   The second line (IDs separated by commas) appears only when some are missing. Restart loops are not suppressed; repeated 🟢 messages are the alarm. Nothing is sent after a wake from sleep, because the process doesn't restart.
-7. Start the Post stream.
+   The second line (IDs separated by commas) appears only when some are missing. Nothing is sent after a wake from sleep, because the process doesn't restart.
+8. Start the Post stream.
 
 There is no heartbeat.
 
@@ -277,11 +278,25 @@ Apartment for long-term rent in Batumi, Georgia.
 - **Dockerfile:** `FROM node:26.9.0-trixie-slim` → `WORKDIR /app` → `npm i -g pnpm@12.4.2` → copy `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` (`allowBuilds: { better-sqlite3: true, esbuild: false }`) → `pnpm install --frozen-lockfile --prod` → smoke check `RUN node -e "require('better-sqlite3')"` → `COPY src` → `USER node` → `ENTRYPOINT ["node", "--import", "tsx", "src/main.ts"]`.
   - better-sqlite3's install script downloads the prebuilt `linux-arm64` binary for this Node ABI, so the build needs network access and no toolchain. If the download fails, the script falls back to compiling and the build fails for lack of `python3 make g++`. Add those to the image only if that happens.
   - tsx is a local dependency and not on the image's `PATH`, so the entrypoint loads it with `node --import tsx`.
-- **Compose:** one service `userbot`: `build: .`, `restart: unless-stopped`, `init: true`, `env_file: .env`, bind mount `./data:/app/data` (so the owner edits the Criteria and Zone from the laptop).
+- **Compose:** one service `userbot`: `build: .`, **`restart: "no"`**, `init: true`, `env_file: .env`, bind mount `./data:/app/data` (so the owner edits the Criteria and Zone from the laptop).
+- **Nothing restarts the bot.** A crash means it stays down until the owner runs `docker compose up -d`, and the same goes for a reboot. This is deliberate: an automatic restart turns a bad config or a flood wait into a loop of handshakes, dialog scans and self-messages, which is the pattern most likely to get the account limited. The 🟢 message not arriving is how the owner notices.
 - Runs on the owner's laptop only. The process is down while the laptop sleeps or is off, and **Posts published in those gaps are not recovered**.
 - `.gitignore`: `.env`, `data/`, `node_modules/`, `.claude/worktrees/`. `.dockerignore`: `.env`, `data`, `node_modules`, `.git`, `.scratch`, `.claude`, `.agents`, `docs`.
 - Secrets live only in `.env`. The session file grants full account access.
 - Cost: roughly $0.02–0.05 per 6-photo Post, since every agent step resends the photos (a text-only 3-step run measured 2.5k tokens; a 3-step run with 6 photos is about 26k). Gemini's implicit caching may reduce it, unverified through the gateway. Google's list price doubles on 2027-01-01.
+
+## Account safety
+
+The account is the owner's own, so the bot is built to look like a quiet client rather than an abusive one. ([mtcute research](research/mtcute.md))
+
+- **It only ever writes to Saved Messages.** `sendText('me', …)` is the only send. Nobody else can see, or report, anything it does.
+- **It never joins, leaves or opens chats.** `openChat` stays unused: mtcute's docs warn that opening more than 5–10 chats at once risks transport errors "or even get banned". No username resolution at runtime either.
+- **Flood waits are obeyed, not fought.** The client raises mtcute's flood-wait sleep from 10s to **5 minutes** (`maxRetries: 3`), so Telegram's own back-off is honoured inside the process. Nothing restarts the bot into a wait it was just given.
+- **One process per session,** enforced by the startup lock, so the session is never revoked for being used twice.
+- **The membership dialog scan is best-effort** and runs once per start.
+- **A stable device identity** (`deviceModel: 'rental-userbot'`, `systemVersion: 'docker'`, `appVersion`) is pinned in `initConnectionOptions`, so an mtcute upgrade doesn't change how the session appears under Telegram's Devices.
+- **Posts are evaluated one at a time**, at most 6 photo downloads each, and mtcute throttles parallel downloads.
+- Out of the bot's hands: use an established account, keep it on the laptop's normal connection rather than a datacenter VPN, and stay logged in on a real client too.
 
 ## Testing
 

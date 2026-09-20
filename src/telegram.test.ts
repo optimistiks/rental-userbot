@@ -5,6 +5,8 @@ import {
   daemonStartParams,
   createTelegramAdapter,
   telegramClientOptions,
+  DEVICE_INFO,
+  MAX_FLOOD_WAIT_MS,
   startDaemonSession,
 } from './telegram.js'
 
@@ -15,15 +17,23 @@ const settings = {
 
 describe('telegram client setup', () => {
   it('uses the persistent session and the specified update settings', () => {
-    expect(telegramClientOptions(settings)).toEqual({
+    expect(telegramClientOptions(settings)).toMatchObject({
       apiId: 123456,
       apiHash: 'hash',
       storage: 'data/session.sqlite',
+      initConnectionOptions: DEVICE_INFO,
       updates: {
         catchUp: false,
         messageGroupingInterval: 1000,
       },
     })
+  })
+
+  it('sleeps through flood waits instead of dying mid-flood', () => {
+    expect(telegramClientOptions(settings)).toMatchObject({
+      network: { middlewares: expect.any(Array) },
+    })
+    expect(MAX_FLOOD_WAIT_MS).toBeGreaterThan(10_000)
   })
 
   it('refuses interactive prompts when starting the daemon', async () => {

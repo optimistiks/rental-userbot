@@ -1,10 +1,26 @@
-import { TelegramClient } from '@mtcute/node'
+import { networkMiddlewares, TelegramClient } from '@mtcute/node'
 import type { FileDownloadLocation, Message } from '@mtcute/node'
 
 import { MAX_PHOTOS, type LoginSettings, type Settings } from './config.js'
 
 export const SESSION_PATH = 'data/session.sqlite'
 export const MESSAGE_GROUPING_INTERVAL = 1000
+
+/**
+ * Telegram answers a flood wait with "back off for N seconds". mtcute sleeps
+ * through waits up to 10s by default and throws above that; the process would
+ * then die mid-flood. Sleeping through waits up to 5 minutes obeys Telegram
+ * instead of arguing with it.
+ */
+export const MAX_FLOOD_WAIT_MS = 300_000
+export const MAX_FLOOD_RETRIES = 3
+
+/** Pinned so an mtcute upgrade doesn't silently change how this session is listed under Telegram's Devices. */
+export const DEVICE_INFO = {
+  deviceModel: 'rental-userbot',
+  systemVersion: 'docker',
+  appVersion: '0.1.0',
+} as const
 
 export interface PhotoRef {
   readonly __photoRef: true
@@ -62,6 +78,12 @@ export function telegramClientOptions(
     apiId: settings.apiId,
     apiHash: settings.apiHash,
     storage: SESSION_PATH,
+    initConnectionOptions: DEVICE_INFO,
+    network: {
+      middlewares: networkMiddlewares.basic({
+        floodWaiter: { maxWait: MAX_FLOOD_WAIT_MS, maxRetries: MAX_FLOOD_RETRIES },
+      }),
+    },
     updates: {
       catchUp: false,
       messageGroupingInterval: MESSAGE_GROUPING_INTERVAL,

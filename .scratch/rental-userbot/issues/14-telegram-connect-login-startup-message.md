@@ -21,3 +21,5 @@
 ## Comments
 
 - 2026-09-20: Implemented and reviewed in commit `8982d7e`. Automated tests and typechecking pass. Manual Docker/Telegram acceptance remains pending because Docker Desktop is unavailable in this environment and no Telegram login was performed.
+
+- 2026-09-20 (account-safety review): no restart policy any more (`restart: "no"`), so a crash means the bot stays down until started by hand; a session lock at `data/session.lock` stops the daemon and `login` running at once; the membership dialog scan is best-effort; flood waits up to 5 minutes are slept through rather than thrown; the device identity is pinned in `initConnectionOptions`. See § Account safety in the spec.
