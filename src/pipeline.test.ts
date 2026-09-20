@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createEvaluator } from './evaluator.js'
+import { createEvaluator, createEvaluatorTools } from './evaluator.js'
 import { openDedupeStore } from './dedupe-store.js'
 import { createPostPipeline } from './pipeline.js'
 import type { PhotoRef, Post } from './telegram.js'
@@ -26,6 +26,75 @@ function post(chatId: number, text: string, id: number): Post {
 }
 
 describe('Post pipeline', () => {
+  it('sends the Verdict chosen after geocoding and checking the Zone', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
+    const promptPath = join(directory, 'prompt.md')
+    const criteriaPath = join(directory, 'criteria.md')
+    writeFileSync(promptPath, 'Prompt')
+    writeFileSync(criteriaPath, 'Criteria')
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        {
+          content: [{
+            type: 'tool-call',
+            toolCallId: 'geocode-1',
+            toolName: 'geocode',
+            input: JSON.stringify({ query: 'Gorgasali 33' }),
+          }],
+          finishReason: { unified: 'tool-calls', raw: undefined },
+          usage,
+          warnings: [],
+        },
+        {
+          content: [{
+            type: 'tool-call',
+            toolCallId: 'in-zone-1',
+            toolName: 'inZone',
+            input: JSON.stringify({ lat: 41.6481086, lon: 41.6393883 }),
+          }],
+          finishReason: { unified: 'tool-calls', raw: undefined },
+          usage,
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: JSON.stringify({ match: true, notes: 'Agent notes' }) }],
+          finishReason: { unified: 'stop', raw: undefined },
+          usage,
+          warnings: [],
+        },
+      ],
+    })
+    const geocode = vi.fn(async () => ({
+      results: [{
+        precision: 'building' as const,
+        lat: 41.6481086,
+        lon: 41.6393883,
+        label: 'Gorgasali 33, Batumi',
+      }],
+    }))
+    const inZone = vi.fn(() => ({ inside: true, zone: 'Old Batumi' }))
+    const telegram = { sendToMe: vi.fn(async () => undefined) }
+    const dedupeStore = openDedupeStore(':memory:')
+    const evaluator = createEvaluator(
+      { modelId: 'test/model', promptPath, criteriaPath, model },
+      { tools: createEvaluatorTools({ geocode, inZone }) },
+    )
+    const pipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator,
+      telegram,
+      dedupeStore,
+    })
+
+    await pipeline.process(post(-1001234567890, 'Flat at Gorgasali 33', 10))
+
+    expect(telegram.sendToMe).toHaveBeenCalledWith(
+      'https://t.me/example/10\nAgent notes',
+    )
+    expect(model.doGenerateCalls).toHaveLength(3)
+    dedupeStore.close()
+  })
+
   it('evaluates watched text Posts, notifies Matches, and drops other Posts', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
     const promptPath = join(directory, 'prompt.md')

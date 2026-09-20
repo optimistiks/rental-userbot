@@ -3,6 +3,7 @@ import { openDedupeStore, type DedupeStore } from './dedupe-store.js'
 import { readCriteriaFile } from './criteria.js'
 import { readPromptFile } from './prompt.js'
 import type { Telegram } from './telegram.js'
+import { readZoneFile } from './zone.js'
 
 export interface StartupResources {
   settings: Settings
@@ -17,6 +18,7 @@ export function initializeStartup(
 ): StartupResources {
   const criteria = readCriteriaFile(settings.criteriaPath)
   const prompt = readPromptFile(settings.promptPath)
+  readZoneFile(settings.zonePath)
   const dedupeStore = openDedupeStore(databasePath)
   return { settings, criteria, prompt, dedupeStore }
 }

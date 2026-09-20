@@ -2,6 +2,7 @@ import {
   generateText,
   isStepCount,
   Output,
+  tool,
   type LanguageModel,
 } from 'ai'
 import { z } from 'zod'
@@ -9,6 +10,8 @@ import { z } from 'zod'
 import { readCriteriaFile } from './criteria.js'
 import { readPromptFile } from './prompt.js'
 import type { PhotoRef, Post } from './telegram.js'
+import type { GeocodeResponse } from './geocoder.js'
+import type { ZoneResult } from './zone.js'
 
 export const verdictSchema = z.object({
   match: z.boolean(),
@@ -33,7 +36,15 @@ export interface EvaluatorOptions {
   model?: LanguageModel
   downloadPhoto?: (ref: PhotoRef) => Promise<Uint8Array>
   retryPolicy?: RetryPolicy
+  tools?: EvaluatorToolSet
 }
+
+export interface EvaluatorToolImplementations {
+  geocode: (query: string, signal?: AbortSignal) => Promise<GeocodeResponse>
+  inZone: (lat: number, lon: number) => ZoneResult
+}
+
+export const TOOL_TIMEOUT_MS = 10_000
 
 export type EvaluatorPost = Pick<Post, 'text'> &
   Partial<Pick<Post, 'link' | 'photos'>>
@@ -63,6 +74,7 @@ export function createEvaluator(
   const model = options.model ?? settings.model ?? (settings.modelId as LanguageModel)
   const downloadPhoto = options.downloadPhoto
   const retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY
+  const tools = options.tools
 
   return {
     async evaluate(post) {
@@ -107,6 +119,7 @@ export function createEvaluator(
         try {
           const result = await generateText({
             model,
+            ...(tools === undefined ? {} : { tools }),
             system: `${prompt}\n\nCriteria:\n${criteria}`,
             messages: [
               {
@@ -121,9 +134,28 @@ export function createEvaluator(
                 : {},
             output: Output.object({ schema: verdictSchema }),
             maxRetries: 0,
-            timeout: retryPolicy.timeoutMs,
+            timeout:
+              tools === undefined
+                ? retryPolicy.timeoutMs
+                : { totalMs: retryPolicy.timeoutMs, toolMs: TOOL_TIMEOUT_MS },
             providerOptions: {
               google: { thinkingConfig: { includeThoughts: true } },
+            },
+            onToolExecutionStart: ({ toolCall }) => {
+              console.log(
+                `evaluation ${link} tool=${toolCall.toolName} input=${JSON.stringify(toolCall.input)}`,
+              )
+            },
+            onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
+              if (toolOutput.type === 'tool-result') {
+                console.log(
+                  `evaluation ${link} tool=${toolCall.toolName} result=${JSON.stringify(toolOutput.output)} latency=${toolExecutionMs}ms`,
+                )
+              } else {
+                console.log(
+                  `evaluation ${link} tool=${toolCall.toolName} error=${errorMessage(toolOutput.error)} latency=${toolExecutionMs}ms`,
+                )
+              }
             },
             onStepEnd: (step) => logStep(link, step),
           })
@@ -143,6 +175,27 @@ export function createEvaluator(
     },
   }
 }
+
+export function createEvaluatorTools(
+  implementations: EvaluatorToolImplementations,
+) {
+  return {
+    geocode: tool({
+      description:
+        'Search for an apartment or landmark in Batumi. Use a cleaned address or place name. Returns up to three candidates with coordinates and precision; use the coordinates with inZone.',
+      inputSchema: z.object({ query: z.string().min(1) }),
+      execute: ({ query }, { abortSignal }) => implementations.geocode(query, abortSignal),
+    }),
+    inZone: tool({
+      description:
+        'Check whether a latitude and longitude is inside the configured rental Zone. The result names the matching outline when the point is inside.',
+      inputSchema: z.object({ lat: z.number(), lon: z.number() }),
+      execute: ({ lat, lon }) => implementations.inZone(lat, lon),
+    }),
+  }
+}
+
+type EvaluatorToolSet = ReturnType<typeof createEvaluatorTools>
 
 export function formatEvaluationError(error: unknown): string {
   const label = hasTimeoutCause(error) ? 'timeout' : errorName(error)
@@ -243,6 +296,14 @@ function logStep(
       `latency=${step.performance.stepTimeMs}ms`,
     ].join(' '),
   )
+
+  for (const part of step.content) {
+    if (part.type === 'tool-error') {
+      console.log(
+        `evaluation ${link} tool=${part.toolName} input=${JSON.stringify(part.input)} error=${errorMessage(part.error)}`,
+      )
+    }
+  }
 }
 
 interface EvaluationStep {
@@ -254,4 +315,10 @@ interface EvaluationStep {
     outputTokenDetails: { reasoningTokens: number | undefined }
   }
   performance: { stepTimeMs: number }
+  content: ReadonlyArray<{
+    type: string
+    toolName?: string
+    input?: unknown
+    error?: unknown
+  }>
 }

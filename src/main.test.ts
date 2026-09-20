@@ -46,7 +46,7 @@ describe('runDaemon', () => {
       geocoderUrl: 'http://localhost:1234/search',
       criteriaPath,
       promptPath: criteriaPath,
-      zonePath: 'zone.geojson',
+      zonePath: join(process.cwd(), 'data.example/zone.geojson'),
     } satisfies Settings
     const events: string[] = []
     const client = {
@@ -86,7 +86,7 @@ describe('runDaemon', () => {
       geocoderUrl: 'http://localhost:1234/search',
       criteriaPath,
       promptPath: criteriaPath,
-      zonePath: 'zone.geojson',
+      zonePath: join(process.cwd(), 'data.example/zone.geojson'),
     } satisfies Settings
     const client = {
       start: vi.fn(async () => undefined),

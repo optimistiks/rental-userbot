@@ -8,9 +8,11 @@ import {
   type SessionClient,
   type TelegramClientLike,
 } from './telegram.js'
-import { createEvaluator } from './evaluator.js'
+import { createEvaluator, createEvaluatorTools } from './evaluator.js'
+import { createGeocoder } from './geocoder.js'
 import { createPostPipeline } from './pipeline.js'
 import { announceStartup, initializeStartup } from './startup.js'
+import { createZoneChecker } from './zone.js'
 
 type ManagedClient = TelegramClientLike & SessionClient & {
   destroy(): Promise<void>
@@ -44,10 +46,19 @@ export async function runDaemon(
     await startDaemonSession(client)
     const telegram = createTelegramAdapter(client)
     await announceStartup(telegram, settings.channelIds)
+    const geocoder = createGeocoder({
+      url: settings.geocoderUrl,
+      token: settings.locationIqToken,
+    })
+    const zoneChecker = createZoneChecker(settings.zonePath)
     const pipeline = createPostPipeline({
       channelIds: settings.channelIds,
       evaluator: createEvaluator(settings, {
         downloadPhoto: telegram.downloadPhoto,
+        tools: createEvaluatorTools({
+          geocode: (query, signal) => geocoder.geocode(query, signal),
+          inZone: (lat, lon) => zoneChecker.inZone(lat, lon),
+        }),
       }),
       telegram,
       dedupeStore: resources.dedupeStore,

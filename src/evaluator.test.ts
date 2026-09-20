@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createEvaluator } from './evaluator.js'
+import { createEvaluator, createEvaluatorTools } from './evaluator.js'
 import type { PhotoRef } from './telegram.js'
 
 const usage = {
@@ -25,6 +25,167 @@ function modelFor(...verdicts: Array<{ match: boolean; notes: string }>) {
 }
 
 describe('Evaluator', () => {
+  it('lets the agent geocode and check the Zone before returning its Verdict', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
+    const promptPath = join(directory, 'prompt.md')
+    const criteriaPath = join(directory, 'criteria.md')
+    writeFileSync(promptPath, 'Prompt')
+    writeFileSync(criteriaPath, 'Criteria')
+    const geocode = vi.fn(async () => ({
+      results: [{
+        precision: 'building' as const,
+        lat: 41.6481086,
+        lon: 41.6393883,
+        label: 'Gorgasali 33, Batumi',
+      }],
+    }))
+    const inZone = vi.fn(() => ({ inside: true, zone: 'Old Batumi' }))
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        {
+          content: [{
+            type: 'tool-call',
+            toolCallId: 'geocode-1',
+            toolName: 'geocode',
+            input: JSON.stringify({ query: 'Gorgasali 33' }),
+          }],
+          finishReason: { unified: 'tool-calls', raw: undefined },
+          usage,
+          warnings: [],
+        },
+        {
+          content: [{
+            type: 'tool-call',
+            toolCallId: 'in-zone-1',
+            toolName: 'inZone',
+            input: JSON.stringify({ lat: 41.6481086, lon: 41.6393883 }),
+          }],
+          finishReason: { unified: 'tool-calls', raw: undefined },
+          usage,
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: JSON.stringify({ match: true, notes: 'In Old Batumi' }) }],
+          finishReason: { unified: 'stop', raw: undefined },
+          usage,
+          warnings: [],
+        },
+      ],
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const evaluator = createEvaluator(
+      { modelId: 'test/model', promptPath, criteriaPath, model },
+      {
+        tools: createEvaluatorTools({ geocode, inZone }),
+      },
+    )
+
+    await expect(evaluator.evaluate({
+      text: 'Flat at Gorgasali 33',
+      link: 'https://t.me/example/52',
+    })).resolves.toEqual({ match: true, notes: 'In Old Batumi' })
+
+    expect(geocode).toHaveBeenCalledWith('Gorgasali 33', expect.anything())
+    expect(inZone).toHaveBeenCalledWith(41.6481086, 41.6393883)
+    expect(model.doGenerateCalls).toHaveLength(3)
+    expect(model.doGenerateCalls[1].prompt).toContainEqual(
+      expect.objectContaining({ role: 'tool' }),
+    )
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('tool=geocode'))
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('tool=inZone'))
+    log.mockRestore()
+  })
+
+  it('returns tool errors to the agent so it can recover in the same run', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
+    const promptPath = join(directory, 'prompt.md')
+    const criteriaPath = join(directory, 'criteria.md')
+    writeFileSync(promptPath, 'Prompt')
+    writeFileSync(criteriaPath, 'Criteria')
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        {
+          content: [{
+            type: 'tool-call',
+            toolCallId: 'geocode-error-1',
+            toolName: 'geocode',
+            input: JSON.stringify({ query: 'Unknown address' }),
+          }],
+          finishReason: { unified: 'tool-calls', raw: undefined },
+          usage,
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: JSON.stringify({ match: false, notes: 'Location unclear' }) }],
+          finishReason: { unified: 'stop', raw: undefined },
+          usage,
+          warnings: [],
+        },
+      ],
+    })
+    const geocode = vi.fn(async () => {
+      throw new Error('provider unavailable')
+    })
+    const evaluator = createEvaluator(
+      { modelId: 'test/model', promptPath, criteriaPath, model },
+      { tools: createEvaluatorTools({ geocode, inZone: () => ({ inside: false, zone: null }) }) },
+    )
+
+    await expect(evaluator.evaluate({ text: 'Flat' })).resolves.toEqual({
+      match: false,
+      notes: 'Location unclear',
+    })
+    expect(model.doGenerateCalls[1].prompt).toContainEqual(
+      expect.objectContaining({ role: 'tool' }),
+    )
+  })
+
+  it('logs a schema-invalid tool call before the agent recovers', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
+    const promptPath = join(directory, 'prompt.md')
+    const criteriaPath = join(directory, 'criteria.md')
+    writeFileSync(promptPath, 'Prompt')
+    writeFileSync(criteriaPath, 'Criteria')
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        {
+          content: [{
+            type: 'tool-call',
+            toolCallId: 'invalid-geocode-1',
+            toolName: 'geocode',
+            input: JSON.stringify({ query: 42 }),
+          }],
+          finishReason: { unified: 'tool-calls', raw: undefined },
+          usage,
+          warnings: [],
+        },
+        {
+          content: [{ type: 'text', text: JSON.stringify({ match: false, notes: 'Invalid location query' }) }],
+          finishReason: { unified: 'stop', raw: undefined },
+          usage,
+          warnings: [],
+        },
+      ],
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const evaluator = createEvaluator(
+      { modelId: 'test/model', promptPath, criteriaPath, model },
+      {
+        tools: createEvaluatorTools({
+          geocode: vi.fn(async () => ({ results: [] })),
+          inZone: () => ({ inside: false, zone: null }),
+        }),
+      },
+    )
+
+    await expect(evaluator.evaluate({ text: 'Flat' })).resolves.toEqual({
+      match: false,
+      notes: 'Invalid location query',
+    })
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/tool=geocode input=.* error=/))
+    log.mockRestore()
+  })
+
   it('re-reads the prompt and Criteria and returns the structured Verdict', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
     const promptPath = join(directory, 'prompt.md')

@@ -7,7 +7,11 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Settings } from './config.js'
 import { announceStartup, initializeStartup } from './startup.js'
 
-const settings = (criteriaPath: string, promptPath = criteriaPath): Settings => ({
+const settings = (
+  criteriaPath: string,
+  promptPath = criteriaPath,
+  zonePath = join(process.cwd(), 'data.example/zone.geojson'),
+): Settings => ({
   apiId: 123456,
   apiHash: 'hash',
   channelIds: [-1001234567890],
@@ -17,7 +21,7 @@ const settings = (criteriaPath: string, promptPath = criteriaPath): Settings => 
   geocoderUrl: 'http://localhost:1234/search',
   criteriaPath,
   promptPath,
-  zonePath: 'zone.geojson',
+  zonePath,
 })
 
 describe('initializeStartup', () => {
@@ -48,6 +52,19 @@ describe('initializeStartup', () => {
 
     expect(() => initializeStartup(settings(criteriaPath, promptPath), ':memory:')).toThrowError(
       new RegExp(`Prompt file .*${promptPath}`),
+    )
+  })
+
+  it('names the Zone file when it cannot be read', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
+    const criteriaPath = join(directory, 'criteria.md')
+    const promptPath = join(directory, 'prompt.md')
+    const zonePath = join(directory, 'zone.geojson')
+    writeFileSync(criteriaPath, 'Criteria text')
+    writeFileSync(promptPath, 'Prompt text')
+
+    expect(() => initializeStartup(settings(criteriaPath, promptPath, zonePath), ':memory:')).toThrowError(
+      new RegExp(`Zone file .*${zonePath}`),
     )
   })
 })
