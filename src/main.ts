@@ -46,7 +46,9 @@ export async function runDaemon(
     await announceStartup(telegram, settings.channelIds)
     const pipeline = createPostPipeline({
       channelIds: settings.channelIds,
-      evaluator: createEvaluator(settings),
+      evaluator: createEvaluator(settings, {
+        downloadPhoto: telegram.downloadPhoto,
+      }),
       telegram,
       dedupeStore: resources.dedupeStore,
     })

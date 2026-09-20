@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createEvaluator } from './evaluator.js'
 import { openDedupeStore } from './dedupe-store.js'
 import { createPostPipeline } from './pipeline.js'
-import type { Post } from './telegram.js'
+import type { PhotoRef, Post } from './telegram.js'
 
 const usage = {
   inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
@@ -82,6 +82,118 @@ describe('Post pipeline', () => {
     )
     expect(log).toHaveBeenCalledWith(
       'post https://t.me/example/4: dropped empty Post',
+    )
+    log.mockRestore()
+    dedupeStore.close()
+  })
+
+  it('evaluates an album once, sends its photos to the model, and drops a late part', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
+    const promptPath = join(directory, 'prompt.md')
+    const criteriaPath = join(directory, 'criteria.md')
+    writeFileSync(promptPath, 'Prompt')
+    writeFileSync(criteriaPath, 'Criteria')
+    const firstPhoto = { __photoRef: true } as PhotoRef
+    const secondPhoto = { __photoRef: true } as PhotoRef
+    const model = new MockLanguageModelV4({
+      doGenerate: {
+        content: [{ type: 'text', text: JSON.stringify({ match: true, notes: 'Looks good' }) }],
+        finishReason: { unified: 'stop', raw: undefined },
+        usage,
+        warnings: [],
+      },
+    })
+    const downloadPhoto = vi
+      .fn<(photo: PhotoRef) => Promise<Uint8Array>>()
+      .mockResolvedValueOnce(new Uint8Array([1]))
+      .mockResolvedValueOnce(new Uint8Array([2]))
+    const telegram = {
+      sendToMe: vi.fn(async () => undefined),
+      downloadPhoto,
+    }
+    const dedupeStore = openDedupeStore(':memory:')
+    const evaluator = createEvaluator(
+      { modelId: 'test/model', promptPath, criteriaPath, model },
+      { downloadPhoto },
+    )
+    const pipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator,
+      telegram,
+      dedupeStore,
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await pipeline.process({
+      chatId: -1001234567890,
+      messageIds: [60, 61],
+      albumId: 'album-8',
+      text: 'Flat with a balcony',
+      photos: [firstPhoto, secondPhoto],
+      link: 'https://t.me/example/60',
+    })
+    await pipeline.process({
+      chatId: -1001234567890,
+      messageIds: [62],
+      albumId: 'album-8',
+      text: 'Late album part',
+      photos: [firstPhoto],
+      link: 'https://t.me/example/62',
+    })
+
+    expect(downloadPhoto).toHaveBeenCalledTimes(2)
+    expect(model.doGenerateCalls).toHaveLength(1)
+    expect(telegram.sendToMe).toHaveBeenCalledOnce()
+    expect(telegram.sendToMe).toHaveBeenCalledWith(
+      'https://t.me/example/60\nLooks good',
+    )
+    log.mockRestore()
+    dedupeStore.close()
+  })
+
+  it('marks a textless Post processed without an agent run when every photo fails', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
+    const promptPath = join(directory, 'prompt.md')
+    const criteriaPath = join(directory, 'criteria.md')
+    writeFileSync(promptPath, 'Prompt')
+    writeFileSync(criteriaPath, 'Criteria')
+    const photo = { __photoRef: true } as PhotoRef
+    const model = new MockLanguageModelV4({
+      doGenerate: {
+        content: [{ type: 'text', text: JSON.stringify({ match: true, notes: 'Should not run' }) }],
+        finishReason: { unified: 'stop', raw: undefined },
+        usage,
+        warnings: [],
+      },
+    })
+    const downloadPhoto = vi.fn(async () => {
+      throw new Error('expired file reference')
+    })
+    const dedupeStore = openDedupeStore(':memory:')
+    const evaluator = createEvaluator(
+      { modelId: 'test/model', promptPath, criteriaPath, model },
+      { downloadPhoto },
+    )
+    const pipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator,
+      telegram: { sendToMe: vi.fn(async () => undefined) },
+      dedupeStore,
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await pipeline.process({
+      chatId: -1001234567890,
+      messageIds: [70],
+      text: '',
+      photos: [photo],
+      link: 'https://t.me/example/70',
+    })
+
+    expect(model.doGenerateCalls).toHaveLength(0)
+    expect(dedupeStore.isProcessed('-1001234567890:70')).toBe(true)
+    expect(log).toHaveBeenCalledWith(
+      'post https://t.me/example/70: No match — No text or photos remain',
     )
     log.mockRestore()
     dedupeStore.close()

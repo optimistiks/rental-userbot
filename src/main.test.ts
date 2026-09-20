@@ -20,6 +20,7 @@ describe('runLogin', () => {
       iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(),
       onNewMessage: { add: vi.fn() },
+      onMessageGroup: { add: vi.fn() },
     }))
 
     await runLogin(loginSettings, makeClient)
@@ -58,6 +59,7 @@ describe('runDaemon', () => {
       },
       downloadAsBuffer: vi.fn(),
       onNewMessage: { add: vi.fn(() => events.push('stream')) },
+      onMessageGroup: { add: vi.fn() },
     }
 
     await runDaemon(settings, () => client, join(directory, 'bot.sqlite'))
@@ -97,6 +99,7 @@ describe('runDaemon', () => {
       },
       downloadAsBuffer: vi.fn(),
       onNewMessage: { add: vi.fn() },
+      onMessageGroup: { add: vi.fn() },
     }
 
     await expect(

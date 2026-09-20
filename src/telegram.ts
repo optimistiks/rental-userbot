@@ -43,6 +43,7 @@ interface MessageEmitter<T> {
 
 export interface TelegramClientLike {
   onNewMessage: MessageEmitter<Message>
+  onMessageGroup: MessageEmitter<Message[]>
   sendText(
     chatId: 'me',
     text: string,
@@ -94,10 +95,11 @@ export async function startDaemonSession(client: SessionClient): Promise<void> {
   await client.start(daemonStartParams)
 }
 
-const photoLocations = new WeakMap<object, FileDownloadLocation>()
+const MAX_PHOTOS = 6
 
 export function createTelegramAdapter(client: TelegramClientLike): Telegram {
   const postHandlers: Array<(post: Post) => void> = []
+  const photoLocations = new WeakMap<object, FileDownloadLocation>()
   let postStreamStarted = false
 
   function startPostStream(): void {
@@ -106,23 +108,48 @@ export function createTelegramAdapter(client: TelegramClientLike): Telegram {
     }
 
     postStreamStarted = true
-    client.onNewMessage.add((message) => {
-      if (message.isService) {
-        return
-      }
+    client.onNewMessage.add((message) => emitPost([message]))
+    client.onMessageGroup.add((messages) => emitPost(messages))
+  }
 
-      const post: Post = {
-        chatId: message.chat.id,
-        messageIds: [message.id],
-        text: message.text,
-        photos: [],
-        link: message.link,
-      }
+  function emitPost(messages: readonly Message[]): void {
+    const postMessages = messages
+      .filter((message) => !message.isService)
+      .sort((left, right) => left.id - right.id)
 
-      for (const handler of postHandlers) {
-        handler(post)
-      }
-    })
+    if (postMessages.length === 0) {
+      return
+    }
+
+    const firstMessage = postMessages[0]
+    const albumId = firstMessage.groupedIdUnique
+    const post: Post = {
+      chatId: firstMessage.chat.id,
+      messageIds: postMessages.map((message) => message.id),
+      text: postMessages
+        .map((message) => message.text)
+        .filter((text) => text !== '')
+        .join('\n\n'),
+      photos: postMessages.flatMap((message) => photoRefFor(message)).slice(0, MAX_PHOTOS),
+      link: firstMessage.link,
+      ...(albumId == null ? {} : { albumId }),
+    }
+
+    for (const handler of postHandlers) {
+      handler(post)
+    }
+  }
+
+  function photoRefFor(message: Message): PhotoRef[] {
+    const media = message.media
+    if (media?.type !== 'photo') {
+      return []
+    }
+
+    const location = media.getThumbnail('y') ?? media.getThumbnail('x') ?? media
+    const ref = { __photoRef: true } as const
+    photoLocations.set(ref, location)
+    return [ref]
   }
 
   return {
