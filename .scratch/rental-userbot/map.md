@@ -2,7 +2,7 @@
 
 Labels: wayfinder:map
 
-**Status: done.** Destination reached: [spec.md](spec.md) is locked. The build tickets (13–19, 22 in `issues/`, `**Status:** ready-for-agent`) came from `/to-tickets`; 13 and 14 are already implemented. They are build work, not decision tickets, and are not part of this map's frontier.
+**Status: done.** Destination reached: [spec.md](spec.md) is locked, and the build tickets it was sliced into (13–19 and 22 in `issues/`) are all implemented and resolved. Those are build work, not decision tickets, and were never part of this map's frontier. Only the manual acceptance checks in § Done when remain.
 
 ## Destination
 
