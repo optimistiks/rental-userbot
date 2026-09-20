@@ -363,6 +363,8 @@ describe("telegram adapter", () => {
 
   it("lists marked IDs for joined channels, including archived dialogs", async () => {
     expect.hasAssertions();
+    /* Only an async generator satisfies AsyncIterable; nothing here awaits. */
+    // oxlint-disable-next-line typescript/require-await
     const iterDialogs = vi.fn<TelegramClientLike["iterDialogs"]>(async function* iterDialogs() {
       yield { peer: { chatType: "channel", id: -1_001_234_567_890, type: "chat" } };
       yield { peer: { chatType: "supergroup", id: -1_002_222_222_222, type: "chat" } };

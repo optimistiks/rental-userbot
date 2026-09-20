@@ -67,6 +67,8 @@ describe("runDaemon", () => {
     const client = {
       destroy: vi.fn<() => Promise<void>>(() => Promise.resolve()),
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
+      /* Only an async generator satisfies AsyncIterable; nothing here awaits. */
+      // oxlint-disable-next-line typescript/require-await
       async *iterDialogs(): AsyncGenerator<DialogLike> {
         events.push("dialogs");
         yield { peer: { type: "chat", chatType: "channel", id: -1_001_234_567_890 } };
@@ -115,6 +117,8 @@ describe("runDaemon", () => {
     const client = {
       destroy: vi.fn<() => Promise<void>>(() => Promise.resolve()),
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
+      /* Only an async generator satisfies AsyncIterable; nothing here awaits. */
+      // oxlint-disable-next-line typescript/require-await
       async *iterDialogs(): AsyncGenerator<DialogLike> {
         yield { peer: { type: "chat", chatType: "channel", id: -1_001_234_567_890 } };
       },

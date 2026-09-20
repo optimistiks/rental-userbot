@@ -90,7 +90,8 @@
       }
     ],
     "vitest/prefer-called-once": "off",
-    "vitest/prefer-describe-function-title": "off"
+    "vitest/prefer-describe-function-title": "off",
+    "init-declarations": "off"
   },
   "ignorePatterns": [
     "node_modules",

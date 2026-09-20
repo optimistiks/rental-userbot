@@ -46,8 +46,7 @@ describe("evaluator", () => {
     const model = new MockLanguageModelV4({
       doGenerate: (): Promise<never> => Promise.reject(new Error("gateway failed")),
     });
-    // Vitest's Mock<T> cannot carry a generic signature, so run is mocked at the
-    // instantiation the evaluator uses, then widened back once.
+    /* Mock<T> cannot carry a generic, so run is mocked at the instantiation used. */
     const run = vi.fn<(postLink: string, operation: () => Promise<unknown>) => Promise<unknown>>(
       async (_link, operation) => operation(),
     );
