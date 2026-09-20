@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import { readCriteriaFile } from './criteria.js'
 import { readPromptFile } from './prompt.js'
+import { createSentryReporter, type ErrorReporter } from './sentry.js'
 import type { PhotoRef, Post } from './telegram.js'
 import type { GeocodeResponse } from './geocoder.js'
 import type { ZoneResult } from './zone.js'
@@ -37,6 +38,7 @@ export interface EvaluatorOptions {
   downloadPhoto?: (ref: PhotoRef) => Promise<Uint8Array>
   retryPolicy?: RetryPolicy
   tools?: EvaluatorToolSet
+  errorReporter?: ErrorReporter
 }
 
 export interface EvaluatorToolImplementations {
@@ -75,6 +77,7 @@ export function createEvaluator(
   const downloadPhoto = options.downloadPhoto
   const retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY
   const tools = options.tools
+  const errorReporter = options.errorReporter ?? createSentryReporter(undefined)
 
   return {
     async evaluate(post) {
@@ -113,57 +116,71 @@ export function createEvaluator(
           criteria = readCriteriaFile(settings.criteriaPath)
         } catch (error) {
           console.error(`post ${link}: evaluation setup failed`, error)
+          errorReporter.captureException(error, { postLink: link, phase: 'evaluation' })
           return evaluationFailure(error)
         }
 
         try {
-          const result = await generateText({
-            model,
-            ...(tools === undefined ? {} : { tools }),
-            system: `${prompt}\n\nCriteria:\n${criteria}`,
-            messages: [
-              {
-                role: 'user',
-                content,
+          const result = await errorReporter.run(link, () =>
+            generateText({
+              model,
+              ...(tools === undefined ? {} : { tools }),
+              ...(errorReporter.enabled
+                ? {
+                    experimental_telemetry: {
+                      isEnabled: true,
+                      recordInputs: true,
+                      recordOutputs: true,
+                      functionId: 'rental-evaluator',
+                    },
+                  }
+                : {}),
+              system: `${prompt}\n\nCriteria:\n${criteria}`,
+              messages: [
+                {
+                  role: 'user',
+                  content,
+                },
+              ],
+              stopWhen: isStepCount(retryPolicy.maxSteps),
+              prepareStep: ({ stepNumber }) =>
+                stepNumber === retryPolicy.maxSteps - 1
+                  ? { toolChoice: 'none' }
+                  : {},
+              output: Output.object({ schema: verdictSchema }),
+              maxRetries: 0,
+              timeout:
+                tools === undefined
+                  ? retryPolicy.timeoutMs
+                  : { totalMs: retryPolicy.timeoutMs, toolMs: TOOL_TIMEOUT_MS },
+              providerOptions: {
+                google: { thinkingConfig: { includeThoughts: true } },
               },
-            ],
-            stopWhen: isStepCount(retryPolicy.maxSteps),
-            prepareStep: ({ stepNumber }) =>
-              stepNumber === retryPolicy.maxSteps - 1
-                ? { toolChoice: 'none' }
-                : {},
-            output: Output.object({ schema: verdictSchema }),
-            maxRetries: 0,
-            timeout:
-              tools === undefined
-                ? retryPolicy.timeoutMs
-                : { totalMs: retryPolicy.timeoutMs, toolMs: TOOL_TIMEOUT_MS },
-            providerOptions: {
-              google: { thinkingConfig: { includeThoughts: true } },
-            },
-            onToolExecutionStart: ({ toolCall }) => {
-              console.log(
-                `evaluation ${link} tool=${toolCall.toolName} input=${JSON.stringify(toolCall.input)}`,
-              )
-            },
-            onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
-              if (toolOutput.type === 'tool-result') {
+              onToolExecutionStart: ({ toolCall }) => {
                 console.log(
-                  `evaluation ${link} tool=${toolCall.toolName} result=${JSON.stringify(toolOutput.output)} latency=${toolExecutionMs}ms`,
+                  `evaluation ${link} tool=${toolCall.toolName} input=${JSON.stringify(toolCall.input)}`,
                 )
-              } else {
-                console.log(
-                  `evaluation ${link} tool=${toolCall.toolName} error=${errorMessage(toolOutput.error)} latency=${toolExecutionMs}ms`,
-                )
-              }
-            },
-            onStepEnd: (step) => logStep(link, step),
-          })
+              },
+              onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
+                if (toolOutput.type === 'tool-result') {
+                  console.log(
+                    `evaluation ${link} tool=${toolCall.toolName} result=${JSON.stringify(toolOutput.output)} latency=${toolExecutionMs}ms`,
+                  )
+                } else {
+                  console.log(
+                    `evaluation ${link} tool=${toolCall.toolName} error=${errorMessage(toolOutput.error)} latency=${toolExecutionMs}ms`,
+                  )
+                }
+              },
+              onStepEnd: (step) => logStep(link, step),
+            }),
+          )
 
           return result.output
         } catch (error) {
           console.error(`post ${link}: evaluation attempt ${attempt + 1} failed`, error)
           if (attempt === attempts - 1) {
+            errorReporter.captureException(error, { postLink: link, phase: 'evaluation' })
             return evaluationFailure(error)
           }
 

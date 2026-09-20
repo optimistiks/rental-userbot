@@ -1,3 +1,5 @@
+import { suppressTracing } from '@sentry/node'
+
 export type GeocodePrecision = 'building' | 'place' | 'street' | 'area'
 
 export interface GeocodeResult {
@@ -58,7 +60,7 @@ export function createGeocoder(
 
       let response: Response
       try {
-        response = await fetcher(url, { signal })
+        response = await suppressTracing(() => fetcher(url, { signal }))
       } catch (error) {
         throw new GeocoderError(
           `LocationIQ request failed: ${redact(errorMessage(error), settings.token)}`,

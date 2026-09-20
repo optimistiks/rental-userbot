@@ -62,6 +62,12 @@ describe('readSettings', () => {
     })
   })
 
+  it('keeps Sentry disabled unless SENTRY_DSN is set', () => {
+    expect(readSettings(validEnvironment).sentryDsn).toBeUndefined()
+    expect(readSettings({ ...validEnvironment, SENTRY_DSN: 'https://public@example.com/1' }).sentryDsn)
+      .toBe('https://public@example.com/1')
+  })
+
   it.each([
     'API_ID',
     'API_HASH',

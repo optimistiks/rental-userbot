@@ -18,6 +18,7 @@ export interface Settings {
   criteriaPath: string
   promptPath: string
   zonePath: string
+  sentryDsn?: string
 }
 
 export interface LoginSettings {
@@ -69,8 +70,14 @@ function optional(env: ProcessEnv, name: string, fallback: string): string {
   return env[name]?.trim() || fallback
 }
 
+function optionalValue(env: ProcessEnv, name: string): string | undefined {
+  const value = env[name]?.trim()
+  return value || undefined
+}
+
 export function readSettings(env: ProcessEnv = process.env): Settings {
   const loginSettings = readLoginSettings(env)
+  const sentryDsn = optionalValue(env, 'SENTRY_DSN')
 
   return {
     ...loginSettings,
@@ -82,6 +89,7 @@ export function readSettings(env: ProcessEnv = process.env): Settings {
     criteriaPath: optional(env, 'CRITERIA_PATH', CRITERIA_PATH),
     promptPath: optional(env, 'PROMPT_PATH', PROMPT_PATH),
     zonePath: optional(env, 'ZONE_PATH', ZONE_PATH),
+    ...(sentryDsn === undefined ? {} : { sentryDsn }),
   }
 }
 

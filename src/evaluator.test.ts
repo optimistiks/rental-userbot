@@ -6,6 +6,7 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createEvaluator, createEvaluatorTools } from './evaluator.js'
+import type { ErrorReporter } from './sentry.js'
 import type { PhotoRef } from './telegram.js'
 
 const usage = {
@@ -25,6 +26,44 @@ function modelFor(...verdicts: Array<{ match: boolean; notes: string }>) {
 }
 
 describe('Evaluator', () => {
+  it('runs agent telemetry under the Post link and reports evaluation failures', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
+    const promptPath = join(directory, 'prompt.md')
+    const criteriaPath = join(directory, 'criteria.md')
+    writeFileSync(promptPath, 'Prompt')
+    writeFileSync(criteriaPath, 'Criteria')
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw new Error('gateway failed')
+      },
+    })
+    const errorReporter: ErrorReporter = {
+      enabled: true,
+      run: vi.fn(async (_link, operation) => operation()),
+      captureException: vi.fn(),
+    }
+    const evaluator = createEvaluator(
+      { modelId: 'test/model', promptPath, criteriaPath, model },
+      {
+        errorReporter,
+        retryPolicy: { attempts: 1, backoffsMs: [], timeoutMs: 100, maxSteps: 8 },
+      },
+    )
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await expect(evaluator.evaluate({
+      text: 'Flat',
+      link: 'https://t.me/example/53',
+    })).resolves.toMatchObject({ kind: 'evaluation-failure' })
+
+    expect(errorReporter.run).toHaveBeenCalledWith('https://t.me/example/53', expect.any(Function))
+    expect(errorReporter.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      { postLink: 'https://t.me/example/53', phase: 'evaluation' },
+    )
+    error.mockRestore()
+  })
+
   it('lets the agent geocode and check the Zone before returning its Verdict', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
     const promptPath = join(directory, 'prompt.md')

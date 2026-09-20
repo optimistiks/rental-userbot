@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createEvaluator, createEvaluatorTools } from './evaluator.js'
 import { openDedupeStore } from './dedupe-store.js'
 import { createPostPipeline } from './pipeline.js'
+import type { ErrorReporter } from './sentry.js'
 import type { PhotoRef, Post } from './telegram.js'
 
 const usage = {
@@ -26,6 +27,40 @@ function post(chatId: number, text: string, id: number): Post {
 }
 
 describe('Post pipeline', () => {
+  it('reports a failed notification with the Post link without blocking the queue', async () => {
+    const errorReporter: ErrorReporter = {
+      enabled: true,
+      run: vi.fn(async (_link, operation) => operation()),
+      captureException: vi.fn(),
+    }
+    const dedupeStore = openDedupeStore(':memory:')
+    const evaluator = {
+      evaluate: vi.fn(async () => ({ match: true, notes: 'Looks good' })),
+    }
+    const telegram = {
+      sendToMe: vi.fn(async () => {
+        throw new Error('Saved Messages unavailable')
+      }),
+    }
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const pipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator,
+      telegram,
+      dedupeStore,
+      errorReporter,
+    })
+
+    await expect(pipeline.process(post(-1001234567890, 'Flat for rent', 54))).resolves.toBeUndefined()
+
+    expect(errorReporter.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      { postLink: 'https://t.me/example/54', phase: 'notification' },
+    )
+    log.mockRestore()
+    dedupeStore.close()
+  })
+
   it('sends the Verdict chosen after geocoding and checking the Zone', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
     const promptPath = join(directory, 'prompt.md')

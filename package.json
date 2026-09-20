@@ -11,6 +11,7 @@
   "dependencies": {
     "@mtcute/dispatcher": "0.32.1",
     "@mtcute/node": "0.32.1",
+    "@sentry/node": "10.75.0",
     "@turf/boolean-point-in-polygon": "7.4.0",
     "ai": "7.0.107",
     "better-sqlite3": "12.11.1",

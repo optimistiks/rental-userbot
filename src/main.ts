@@ -8,9 +8,9 @@ import {
   type SessionClient,
   type TelegramClientLike,
 } from './telegram.js'
-import { createEvaluator, createEvaluatorTools } from './evaluator.js'
 import { createGeocoder } from './geocoder.js'
 import { createPostPipeline } from './pipeline.js'
+import { initializeSentry, type ErrorReporter } from './sentry.js'
 import { announceStartup, initializeStartup } from './startup.js'
 import { createZoneChecker } from './zone.js'
 
@@ -37,11 +37,14 @@ export async function runDaemon(
   settings: Settings,
   makeClient: ClientFactory = createTelegramClient,
   databasePath?: string,
+  errorReporter: ErrorReporter = initializeSentry(settings.sentryDsn),
 ): Promise<void> {
-  const resources = initializeStartup(settings, databasePath)
+  let resources: ReturnType<typeof initializeStartup> | undefined
   let client: ManagedClient | undefined
 
   try {
+    resources = initializeStartup(settings, databasePath)
+    const { createEvaluator, createEvaluatorTools } = await import('./evaluator.js')
     client = makeClient(settings)
     await startDaemonSession(client)
     const telegram = createTelegramAdapter(client)
@@ -59,17 +62,21 @@ export async function runDaemon(
           geocode: (query, signal) => geocoder.geocode(query, signal),
           inZone: (lat, lon) => zoneChecker.inZone(lat, lon),
         }),
+        errorReporter,
       }),
       telegram,
       dedupeStore: resources.dedupeStore,
+      errorReporter,
     })
     telegram.onPost((post) => {
       void pipeline.process(post).catch((error) => {
+        errorReporter.captureException(error, { postLink: post.link, phase: 'pipeline' })
         console.error(`post ${post.link}: pipeline failed`, error)
       })
     })
   } catch (error) {
-    resources.dedupeStore.close()
+    errorReporter.captureException(error)
+    resources?.dedupeStore.close()
 
     if (client !== undefined) {
       try {
@@ -87,13 +94,19 @@ export async function start(
   argv: readonly string[] = process.argv,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
+  let errorReporter: ErrorReporter | undefined
   try {
     if (argv[2] === 'login') {
       await runLogin(readLoginSettings(env))
     } else {
-      await runDaemon(readSettings(env))
+      const settings = readSettings(env)
+      errorReporter = initializeSentry(settings.sentryDsn)
+      await runDaemon(settings, createTelegramClient, undefined, errorReporter)
     }
   } catch (error) {
+    if (argv[2] !== 'login') {
+      (errorReporter ?? initializeSentry(env.SENTRY_DSN)).captureException(error)
+    }
     const message = error instanceof Error ? error.message : String(error)
     console.error(message)
     process.exitCode = 1

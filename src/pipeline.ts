@@ -1,6 +1,7 @@
 import { isWatchedPost } from './channel-filter.js'
 import { postKey, type DedupeStore } from './dedupe-store.js'
 import type { EvaluationFailure, Evaluator, Verdict } from './evaluator.js'
+import { createSentryReporter, type ErrorReporter } from './sentry.js'
 import type { Post, Telegram } from './telegram.js'
 
 export interface PostPipeline {
@@ -12,12 +13,14 @@ export interface PostPipelineOptions {
   evaluator: Evaluator
   telegram: Pick<Telegram, 'sendToMe'>
   dedupeStore: DedupeStore
+  errorReporter?: ErrorReporter
 }
 
 export const MAX_TELEGRAM_MESSAGE_LENGTH = 4096
 
 export function createPostPipeline(options: PostPipelineOptions): PostPipeline {
   let queueTail = Promise.resolve()
+  const errorReporter = options.errorReporter ?? createSentryReporter(undefined)
 
   return {
     process(post) {
@@ -36,7 +39,7 @@ export function createPostPipeline(options: PostPipelineOptions): PostPipeline {
       }
 
       const queued = queueTail.then(() =>
-        processQueuedPost(post, processedPostKey, options),
+        processQueuedPost(post, processedPostKey, options, errorReporter),
       )
       queueTail = queued.catch(() => undefined)
       return queued
@@ -48,6 +51,7 @@ async function processQueuedPost(
   post: Post,
   processedPostKey: string,
   options: PostPipelineOptions,
+  errorReporter: ErrorReporter,
 ): Promise<void> {
   if (options.dedupeStore.isProcessed(processedPostKey)) {
     return
@@ -62,6 +66,7 @@ async function processQueuedPost(
     }
   } catch (error) {
     console.error(`post ${post.link}: failed to send notification`, error)
+    errorReporter.captureException(error, { postLink: post.link, phase: 'notification' })
   } finally {
     options.dedupeStore.markProcessed(processedPostKey)
   }
