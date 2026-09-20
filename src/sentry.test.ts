@@ -7,7 +7,7 @@ import { createSentryReporter, sanitizeSentryText } from "./sentry.js";
 function fakeSentry() {
   const events: string[] = [];
   const scopeContext = vi.fn<(name: string, context: unknown) => void>();
-  let initOptions: Record<string, unknown> | undefined;
+  let initOptions: Record<string, unknown> | undefined = undefined;
 
   return {
     captureException: vi.fn<SentryApi["captureException"]>(),
@@ -76,7 +76,6 @@ describe("sentry reporter", () => {
         urlQueryParams: false,
       },
       dsn: "https://public@example.com/1",
-      sendDefaultPii: false,
       tracesSampleRate: 1,
     });
     expect(sentry.startSpan).toHaveBeenCalledWith(
@@ -133,9 +132,8 @@ describe("sentry reporter", () => {
     const sentry = fakeSentry();
     const operation = vi.fn<() => Promise<string>>(() => Promise.resolve("done"));
     sentry.startSpan.mockImplementation((_options, callback) => {
-      const result = callback({});
+      callback({});
       throw new Error("span failed");
-      return result;
     });
     const reporter = createSentryReporter(
       "https://public@example.com/1",

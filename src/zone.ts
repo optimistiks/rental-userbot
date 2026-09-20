@@ -1,4 +1,4 @@
-import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+import { booleanPointInPolygon } from "@turf/boolean-point-in-polygon";
 import { readFileSync } from "node:fs";
 
 import { errorMessage } from "./errors.js";
@@ -35,7 +35,7 @@ interface ZoneChecker {
 }
 
 function readZoneFile(zonePath: string): ZoneFile {
-  let parsed: unknown;
+  let parsed: unknown = undefined;
   try {
     parsed = JSON.parse(readFileSync(zonePath, "utf8"));
   } catch (error) {

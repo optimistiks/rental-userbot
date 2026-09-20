@@ -58,7 +58,6 @@ function createSentryReporter(dsn?: string, api: SentryApi = Sentry): ErrorRepor
         userInfo: false,
       },
       dsn,
-      sendDefaultPii: false,
       tracesSampleRate: 1,
     });
   } catch {
@@ -97,7 +96,7 @@ function createSentryReporter(dsn?: string, api: SentryApi = Sentry): ErrorRepor
       // The span has to wrap the run to measure it, but Sentry must never change
       // The outcome: if startSpan itself fails, fall back to the bare operation,
       // Reusing the started one so a Post is never evaluated twice.
-      let started: Promise<T> | undefined;
+      let started: Promise<T> | undefined = undefined;
       const startOperation = (): Promise<T> => (started = operation());
 
       try {

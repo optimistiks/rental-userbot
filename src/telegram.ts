@@ -130,7 +130,7 @@ function createTelegramAdapter(client: TelegramClientLike): Telegram {
   function emitPost(messages: readonly Message[]): void {
     const postMessages = messages
       .filter((message) => !message.isService)
-      .sort((left, right) => left.id - right.id);
+      .toSorted((left, right) => left.id - right.id);
 
     if (postMessages.length === 0) {
       return;
@@ -147,7 +147,7 @@ function createTelegramAdapter(client: TelegramClientLike): Telegram {
         .map((message) => message.text)
         .filter((text) => text !== "")
         .join("\n\n"),
-      ...(albumId == null ? {} : { albumId }),
+      ...(albumId === undefined || albumId === null ? {} : { albumId }),
     };
 
     for (const handler of postHandlers) {

@@ -45,7 +45,7 @@ async function runDaemon(
   lock: SessionLock = acquireSessionLock(),
 ): Promise<void> {
   let resources: ReturnType<typeof initializeStartup> | undefined;
-  let client: ManagedClient | undefined;
+  let client: ManagedClient | undefined = undefined;
 
   try {
     resources = initializeStartup(settings, databasePath);
@@ -100,7 +100,7 @@ async function start(
   argv: readonly string[] = process.argv,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  let errorReporter: ErrorReporter | undefined;
+  let errorReporter: ErrorReporter | undefined = undefined;
   try {
     if (argv[2] === "login") {
       await runLogin(readLoginSettings(env));

@@ -125,7 +125,7 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
               ...(tools === undefined ? {} : { tools }),
               ...(errorReporter.enabled
                 ? {
-                    experimental_telemetry: {
+                    telemetry: {
                       functionId: "rental-evaluator",
                       isEnabled: true,
                       recordInputs: true,
@@ -133,7 +133,7 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
                     },
                   }
                 : {}),
-              system: `${prompt}\n\nCriteria:\n${criteria}`,
+              instructions: `${prompt}\n\nCriteria:\n${criteria}`,
               messages: [
                 {
                   content,
@@ -341,7 +341,11 @@ function describeToolResult(toolName: string, output: unknown): string {
   }
 
   if (toolName === "inZone") {
-    return output.inside === true ? `inside ${output.zone ?? "the Zone"}` : "outside";
+    if (output.inside !== true) {
+      return "outside";
+    }
+
+    return `inside ${typeof output.zone === "string" ? output.zone : "the Zone"}`;
   }
 
   if (toolName === "geocode") {

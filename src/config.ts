@@ -69,12 +69,13 @@ function channelIds(value: string): number[] {
 }
 
 function optional(env: ProcessEnv, name: string, fallback: string): string {
-  return env[name]?.trim() || fallback;
+  const value = env[name]?.trim();
+  return value === undefined || value === "" ? fallback : value;
 }
 
 function optionalValue(env: ProcessEnv, name: string): string | undefined {
   const value = env[name]?.trim();
-  return value || undefined;
+  return value === undefined || value === "" ? undefined : value;
 }
 
 function readSettings(env: ProcessEnv = process.env): Settings {

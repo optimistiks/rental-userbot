@@ -46,7 +46,7 @@ async function announceStartup(
 ): Promise<void> {
   // Best-effort: the membership check is a warning, so a flood wait or a failed
   // Dialog scan must not take the bot down with it.
-  let joinedChannelIds: number[] | undefined;
+  let joinedChannelIds: number[] | undefined = undefined;
   try {
     joinedChannelIds = await telegram.joinedChannelIds();
   } catch (error) {
