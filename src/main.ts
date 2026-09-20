@@ -72,7 +72,10 @@ async function runDaemon(
       telegram,
     });
     telegram.onPost((post) => {
-      void pipeline.process(post).catch((error) => {
+      /* The onPost callback returns void, so the pipeline promise is deliberately
+         detached here and its failures are handled in place. */
+      // oxlint-disable-next-line promise/prefer-await-to-then
+      pipeline.process(post).catch((error: unknown) => {
         errorReporter.captureException(error, { phase: "pipeline", postLink: post.link });
         console.error(`post ${post.link}: pipeline failed`, error);
       });
@@ -119,6 +122,7 @@ async function start(
 const isEntrypoint = process.argv[1] !== undefined && import.meta.filename === process.argv[1];
 
 if (isEntrypoint) {
+  // oxlint-disable-next-line no-void
   void start();
 }
 

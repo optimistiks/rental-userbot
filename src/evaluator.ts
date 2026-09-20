@@ -119,6 +119,9 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
         }
 
         try {
+          /* Attempts are sequential by design: a retry only makes sense once the
+          previous one has failed. */
+          // oxlint-disable-next-line no-await-in-loop
           const result = await errorReporter.run(link, () =>
             generateText({
               model,
@@ -179,6 +182,7 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
             return evaluationFailure(error);
           }
 
+          // oxlint-disable-next-line no-await-in-loop
           await wait(retryPolicy.backoffsMs[attempt] ?? 0);
         }
       }
@@ -188,6 +192,9 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
   };
 }
 
+/* EvaluatorToolSet is derived from this function's return type, so naming
+that type here would be circular. */
+// oxlint-disable-next-line typescript/explicit-function-return-type, typescript/explicit-module-boundary-types
 function createEvaluatorTools(implementations: EvaluatorToolImplementations) {
   return {
     geocode: tool({
@@ -210,6 +217,8 @@ type EvaluatorToolSet = ReturnType<typeof createEvaluatorTools>;
 function formatEvaluationError(error: unknown): string {
   const label = hasTimeoutCause(error) ? "timeout" : errorName(error);
   const message = errorMessage(error)
+    /* Matches ANSI escape sequences, which are control characters by definition. */
+    // oxlint-disable-next-line no-control-regex
     .replaceAll(/\u001B\[[0-?]*[ -/]*[@-~]/gu, "")
     .split(/\r\n|\n|\r/u, 1)[0]
     .slice(0, 200);
@@ -266,6 +275,8 @@ async function downloadPhotos(
         throw new Error("photo downloader is not configured");
       }
 
+      /* Photos download one at a time to stay under Telegram's rate limits. */
+      // oxlint-disable-next-line no-await-in-loop
       photos.push(await downloadPhoto(photoRef));
     } catch (error) {
       console.warn(`post ${link}: skipped photo: ${errorMessage(error)}`);
@@ -353,7 +364,7 @@ function describeToolResult(toolName: string, output: unknown): string {
       return `failed: ${output.error}`;
     }
 
-    const results = Array.isArray(output.results) ? output.results : [];
+    const results: unknown[] = Array.isArray(output.results) ? output.results : [];
     const [best] = results;
     if (!isRecord(best)) {
       return "nothing found";

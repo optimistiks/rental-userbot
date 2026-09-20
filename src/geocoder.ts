@@ -100,6 +100,8 @@ class GeocoderError extends Error {
 }
 
 function toGeocodeResult(value: unknown): GeocodeResult {
+  /* Parsing a third-party response: the shape is checked by the caller. */
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
   const result = value as LocationIqResult;
   const lat = Number(result.lat);
   const lon = Number(result.lon);
@@ -119,6 +121,7 @@ function toGeocodeResult(value: unknown): GeocodeResult {
 
 async function responseError(response: Response, token: string): Promise<string> {
   try {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const body = (await response.json()) as { error?: unknown };
     return typeof body.error === "string" ? redact(body.error, token) : `HTTP ${response.status}`;
   } catch {

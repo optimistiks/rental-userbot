@@ -63,6 +63,7 @@ function createZoneChecker(zonePath: string): ZoneChecker {
         if (
           booleanPointInPolygon(
             toPosition(point),
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
             feature as Parameters<typeof booleanPointInPolygon>[1],
           )
         ) {
@@ -126,19 +127,23 @@ function isGeoJsonFeature(value: unknown): boolean {
     return true;
   }
 
-  if (!isRecord(value.geometry) || typeof value.geometry.type !== "string") {
+  return isGeoJsonGeometry(value.geometry);
+}
+
+function isGeoJsonGeometry(geometry: unknown): boolean {
+  if (!isRecord(geometry) || typeof geometry.type !== "string") {
     return false;
   }
 
-  if (value.geometry.type === "Polygon" || value.geometry.type === "MultiPolygon") {
-    return isZoneGeometry(value.geometry);
+  if (geometry.type === "Polygon" || geometry.type === "MultiPolygon") {
+    return isZoneGeometry(geometry);
   }
 
-  if (value.geometry.type === "GeometryCollection") {
-    return Array.isArray(value.geometry.geometries);
+  if (geometry.type === "GeometryCollection") {
+    return Array.isArray(geometry.geometries);
   }
 
-  return Array.isArray(value.geometry.coordinates);
+  return Array.isArray(geometry.coordinates);
 }
 
 function isZoneGeometry(value: unknown): value is ZoneGeometry {

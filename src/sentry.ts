@@ -1,3 +1,4 @@
+// oxlint-disable-next-line import/no-namespace
 import * as Sentry from "@sentry/node";
 
 type SentryApi = Pick<
@@ -39,6 +40,7 @@ function createSentryReporter(dsn?: string, api: SentryApi = Sentry): ErrorRepor
     // The diagnostics-channel integration is the Sentry-supported path for ai@7.
     api.experimentalUseDiagnosticsChannelInjection();
     api.init({
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
       beforeSend: (event) => sanitizeSentryValue(event) as typeof event,
       beforeSendSpan: (span) => {
         const data = { ...span.data };
@@ -119,10 +121,13 @@ function createSentryReporter(dsn?: string, api: SentryApi = Sentry): ErrorRepor
 
 function sanitizeSentryText(value: string): string {
   return value
-    .replaceAll(/([?&](?:key|token|api[_-]?key|authorization)=)[^&#\s]*/giu, "$1[redacted]")
     .replaceAll(
-      /((?:authorization|proxy-authorization|x-api-key|api[_-]?key|apikey|access[_-]?token|token|secret|password)\s*[:=]\s*(?:Bearer\s+)?)[^,\s;"'}]+/giu,
-      "$1[redacted]",
+      /(?<prefix>[?&](?:key|token|api[_-]?key|authorization)=)[^&#\s]*/giu,
+      "$<prefix>[redacted]",
+    )
+    .replaceAll(
+      /(?<prefix>(?:authorization|proxy-authorization|x-api-key|api[_-]?key|apikey|access[_-]?token|token|secret|password)\s*[:=]\s*(?:Bearer\s+)?)[^,\s;"'}]+/giu,
+      "$<prefix>[redacted]",
     )
     .replaceAll(/(?:data[\\/])?(?:session|bot)\.sqlite/giu, "[redacted database]");
 }

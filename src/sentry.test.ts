@@ -55,6 +55,8 @@ function fakeSentry(): FakeSentry {
 
 /** Runs the span body, then fails the span the way Sentry would on a thrown error. */
 function failAfterCalling(callback: (span: unknown) => unknown): never {
+  /* Not a Node error-first callback; it is the span body Sentry invokes. */
+  // oxlint-disable-next-line node/callback-return
   callback({});
   throw new Error("span failed");
 }

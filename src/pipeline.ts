@@ -42,9 +42,13 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
         return Promise.resolve();
       }
 
+      /* The queue is a promise chain on purpose: process() must return at once
+         while each post still runs strictly after the previous one. */
+      // oxlint-disable-next-line promise/prefer-await-to-then
       const queued = queueTail.then(() =>
         processQueuedPost(post, processedPostKey, options, errorReporter),
       );
+      // oxlint-disable-next-line promise/prefer-await-to-then
       queueTail = queued.catch(() => {
         /* Failures are reported per post; the queue keeps going. */
       });
