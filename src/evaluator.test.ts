@@ -83,16 +83,18 @@ describe("evaluator", () => {
     const criteriaPath = join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
-    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(async () => ({
-      results: [
-        {
-          label: "Gorgasali 33, Batumi",
-          lat: 41.6481086,
-          lon: 41.6393883,
-          precision: "building" as const,
-        },
-      ],
-    }));
+    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(() =>
+      Promise.resolve({
+        results: [
+          {
+            label: "Gorgasali 33, Batumi",
+            lat: 41.6481086,
+            lon: 41.6393883,
+            precision: "building" as const,
+          },
+        ],
+      }),
+    );
     const inZone = vi.fn<EvaluatorToolImplementations["inZone"]>(() => ({
       inside: true,
       zone: "Old Batumi",
@@ -262,7 +264,9 @@ describe("evaluator", () => {
       {
         model,
         tools: createEvaluatorTools({
-          geocode: vi.fn<EvaluatorToolImplementations["geocode"]>(async () => ({ results: [] })),
+          geocode: vi.fn<EvaluatorToolImplementations["geocode"]>(() =>
+            Promise.resolve({ results: [] }),
+          ),
           inZone: () => ({ inside: false, zone: null }),
         }),
       },

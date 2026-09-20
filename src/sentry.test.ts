@@ -6,14 +6,18 @@ import { createSentryReporter, sanitizeSentryText } from "./sentry.js";
 
 function fakeSentry() {
   const events: string[] = [];
-  const scopeContext = vi.fn();
+  const scopeContext = vi.fn<(name: string, context: unknown) => void>();
   let initOptions: Record<string, unknown> | undefined;
 
   return {
-    captureException: vi.fn(),
+    captureException: vi.fn<SentryApi["captureException"]>(),
     events,
-    experimentalUseDiagnosticsChannelInjection: vi.fn(() => events.push("prepare")),
-    init: vi.fn((options: Parameters<SentryApi["init"]>[0]) => {
+    experimentalUseDiagnosticsChannelInjection: vi.fn<
+      SentryApi["experimentalUseDiagnosticsChannelInjection"]
+    >(() => {
+      events.push("prepare");
+    }),
+    init: vi.fn<SentryApi["init"]>((options) => {
       initOptions = options as Record<string, unknown>;
       events.push("init");
       return undefined as ReturnType<SentryApi["init"]>;
@@ -22,8 +26,15 @@ function fakeSentry() {
       return initOptions;
     },
     scopeContext,
-    startSpan: vi.fn((_options, callback) => callback({})),
-    withScope: vi.fn((callback) => callback({ setContext: scopeContext })),
+    // Sentry types startSpan and withScope generically and vitest's Mock cannot
+    // carry a type parameter, so both are mocked at the shape the reporter uses
+    // and the object is widened to SentryApi where it is handed over.
+    startSpan: vi.fn<(options: unknown, callback: (span: unknown) => unknown) => unknown>(
+      (_options, callback) => callback({}),
+    ),
+    withScope: vi.fn<(callback: (scope: unknown) => unknown) => unknown>((callback) =>
+      callback({ setContext: scopeContext }),
+    ),
   };
 }
 
@@ -31,8 +42,8 @@ describe("sentry reporter", () => {
   it("does nothing when SENTRY_DSN is unset", async () => {
     expect.hasAssertions();
     const sentry = fakeSentry();
-    const reporter = createSentryReporter(undefined, sentry);
-    const operation = vi.fn(async () => "done");
+    const reporter = createSentryReporter(undefined, sentry as unknown as SentryApi);
+    const operation = vi.fn<() => Promise<string>>(() => Promise.resolve("done"));
 
     await expect(reporter.run("https://t.me/example/1", operation)).resolves.toBe("done");
 
@@ -45,9 +56,14 @@ describe("sentry reporter", () => {
   it("initializes tracing and captures agent inputs and outputs when enabled", async () => {
     expect.hasAssertions();
     const sentry = fakeSentry();
-    const reporter = createSentryReporter("https://public@example.com/1", sentry);
+    const reporter = createSentryReporter(
+      "https://public@example.com/1",
+      sentry as unknown as SentryApi,
+    );
 
-    await expect(reporter.run("https://t.me/example/2", async () => "done")).resolves.toBe("done");
+    await expect(
+      reporter.run("https://t.me/example/2", () => Promise.resolve("done")),
+    ).resolves.toBe("done");
     reporter.captureException(new Error("failed"), { postLink: "https://t.me/example/2" });
 
     expect(reporter.enabled).toBe(true);
@@ -115,13 +131,16 @@ describe("sentry reporter", () => {
   it("does not let a span lifecycle failure block or duplicate the operation", async () => {
     expect.hasAssertions();
     const sentry = fakeSentry();
-    const operation = vi.fn(async () => "done");
+    const operation = vi.fn<() => Promise<string>>(() => Promise.resolve("done"));
     sentry.startSpan.mockImplementation((_options, callback) => {
       const result = callback({});
       throw new Error("span failed");
       return result;
     });
-    const reporter = createSentryReporter("https://public@example.com/1", sentry);
+    const reporter = createSentryReporter(
+      "https://public@example.com/1",
+      sentry as unknown as SentryApi,
+    );
 
     await expect(reporter.run("https://t.me/example/3", operation)).resolves.toBe("done");
     expect(operation).toHaveBeenCalledTimes(1);

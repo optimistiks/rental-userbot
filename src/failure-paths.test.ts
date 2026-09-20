@@ -404,10 +404,12 @@ describe("failure paths", () => {
       sendToMe: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),
     };
     const evaluator = {
-      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({
-        match: true,
-        notes: "x".repeat(5000),
-      })),
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({
+          match: true,
+          notes: "x".repeat(5000),
+        }),
+      ),
     };
     const log = vi.spyOn(console, "log").mockImplementation(() => {
       /* Keep test output quiet. */

@@ -76,8 +76,8 @@ describe(runDaemon, () => {
           events.push("stream");
         }),
       },
-      sendText: vi.fn<TelegramClientLike["sendText"]>(async () => events.push("send")),
-      start: vi.fn<SessionClient["start"]>(async () => events.push("start")),
+      sendText: vi.fn<TelegramClientLike["sendText"]>(() => Promise.resolve(events.push("send"))),
+      start: vi.fn<SessionClient["start"]>(() => Promise.resolve(events.push("start"))),
     };
 
     await runDaemon(settings, () => client, join(directory, "bot.sqlite"), undefined, noLock());

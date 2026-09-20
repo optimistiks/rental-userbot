@@ -86,7 +86,9 @@ describe("post pipeline", () => {
     };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
-      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: true, notes: "Looks good" })),
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: true, notes: "Looks good" }),
+      ),
     };
     const telegram = {
       sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {
@@ -159,16 +161,18 @@ describe("post pipeline", () => {
         },
       ],
     });
-    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(async () => ({
-      results: [
-        {
-          label: "Gorgasali 33, Batumi",
-          lat: 41.6481086,
-          lon: 41.6393883,
-          precision: "building" as const,
-        },
-      ],
-    }));
+    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(() =>
+      Promise.resolve({
+        results: [
+          {
+            label: "Gorgasali 33, Batumi",
+            lat: 41.6481086,
+            lon: 41.6393883,
+            precision: "building" as const,
+          },
+        ],
+      }),
+    );
     const inZone = vi.fn<EvaluatorToolImplementations["inZone"]>(() => ({
       inside: true,
       zone: "Old Batumi",
@@ -456,7 +460,9 @@ describe("post pipeline", () => {
     expect.hasAssertions();
     const dedupeStore = openDedupeStore(":memory:");
     const firstEvaluator = {
-      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: false, notes: "No match" })),
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: false, notes: "No match" }),
+      ),
     };
     const firstPipeline = createPostPipeline({
       channelIds: [-1_001_234_567_890],
@@ -472,7 +478,9 @@ describe("post pipeline", () => {
     await firstPipeline.process(firstPost);
 
     const secondEvaluator = {
-      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: false, notes: "No match" })),
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: false, notes: "No match" }),
+      ),
     };
     const secondPipeline = createPostPipeline({
       channelIds: [-1_001_234_567_890],
@@ -493,7 +501,9 @@ describe("post pipeline", () => {
     expect.hasAssertions();
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
-      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: true, notes: "Looks good" })),
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: true, notes: "Looks good" }),
+      ),
     };
     const telegram = {
       sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {

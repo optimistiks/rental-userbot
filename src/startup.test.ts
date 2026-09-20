@@ -76,7 +76,9 @@ describe(announceStartup, () => {
   it("sends the startup message and reports missing channels", async () => {
     expect.hasAssertions();
     const telegram = {
-      joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(async () => [-1_001_234_567_890]),
+      joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(() =>
+        Promise.resolve([-1_001_234_567_890]),
+      ),
       sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
     };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {
@@ -103,7 +105,9 @@ describe(announceStartup, () => {
   it("omits the not-joined line when every channel is joined", async () => {
     expect.hasAssertions();
     const telegram = {
-      joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(async () => [-1_001_234_567_890]),
+      joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(() =>
+        Promise.resolve([-1_001_234_567_890]),
+      ),
       sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
     };
 
