@@ -1,6 +1,6 @@
 import { isWatchedPost } from './channel-filter.js'
 import { postKey, type DedupeStore } from './dedupe-store.js'
-import type { Evaluator } from './evaluator.js'
+import type { EvaluationFailure, Evaluator, Verdict } from './evaluator.js'
 import type { Post, Telegram } from './telegram.js'
 
 export interface PostPipeline {
@@ -13,6 +13,8 @@ export interface PostPipelineOptions {
   telegram: Pick<Telegram, 'sendToMe'>
   dedupeStore: DedupeStore
 }
+
+export const MAX_TELEGRAM_MESSAGE_LENGTH = 4096
 
 export function createPostPipeline(options: PostPipelineOptions): PostPipeline {
   let queueTail = Promise.resolve()
@@ -54,9 +56,12 @@ async function processQueuedPost(
   const verdict = await options.evaluator.evaluate(post)
 
   try {
-    if (verdict.match) {
-      await options.telegram.sendToMe(`${post.link}\n${verdict.notes}`)
+    const notification = notificationFor(post, verdict)
+    if (notification !== undefined) {
+      await options.telegram.sendToMe(truncateTelegramMessage(notification))
     }
+  } catch (error) {
+    console.error(`post ${post.link}: failed to send notification`, error)
   } finally {
     options.dedupeStore.markProcessed(processedPostKey)
   }
@@ -66,8 +71,34 @@ async function processQueuedPost(
 
 function logVerdict(
   post: Post,
-  verdict: { match: boolean; notes: string },
+  verdict: Verdict,
 ): void {
+  if (isEvaluationFailure(verdict)) {
+    console.log(`post ${post.link}: Evaluation failure — ${verdict.error}`)
+    return
+  }
+
   const label = verdict.match ? 'Match' : 'No match'
   console.log(`post ${post.link}: ${label} — ${verdict.notes}`)
+}
+
+function notificationFor(
+  post: Post,
+  verdict: Verdict,
+): string | undefined {
+  if (isEvaluationFailure(verdict)) {
+    return `${post.link}\n⚠️ couldn't evaluate: ${verdict.error}`
+  }
+
+  return verdict.match ? `${post.link}\n${verdict.notes}` : undefined
+}
+
+function isEvaluationFailure(
+  verdict: Verdict,
+): verdict is EvaluationFailure {
+  return 'kind' in verdict && verdict.kind === 'evaluation-failure'
+}
+
+function truncateTelegramMessage(message: string): string {
+  return message.slice(0, MAX_TELEGRAM_MESSAGE_LENGTH)
 }

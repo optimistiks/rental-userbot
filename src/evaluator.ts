@@ -15,7 +15,12 @@ export const verdictSchema = z.object({
   notes: z.string(),
 })
 
-export type Verdict = z.infer<typeof verdictSchema>
+export interface EvaluationFailure {
+  kind: 'evaluation-failure'
+  error: string
+}
+
+export type Verdict = z.infer<typeof verdictSchema> | EvaluationFailure
 
 export interface EvaluatorSettings {
   modelId: string
@@ -27,6 +32,7 @@ export interface EvaluatorSettings {
 export interface EvaluatorOptions {
   model?: LanguageModel
   downloadPhoto?: (ref: PhotoRef) => Promise<Uint8Array>
+  retryPolicy?: RetryPolicy
 }
 
 export type EvaluatorPost = Pick<Post, 'text'> &
@@ -36,8 +42,19 @@ export interface Evaluator {
   evaluate(post: EvaluatorPost): Promise<Verdict>
 }
 
-const MAX_STEPS = 8
-const RUN_TIMEOUT_MS = 180_000
+export interface RetryPolicy {
+  attempts: number
+  backoffsMs: readonly number[]
+  timeoutMs: number
+  maxSteps: number
+}
+
+export const DEFAULT_RETRY_POLICY: RetryPolicy = {
+  attempts: 3,
+  backoffsMs: [2_000, 4_000],
+  timeoutMs: 180_000,
+  maxSteps: 8,
+}
 
 export function createEvaluator(
   settings: EvaluatorSettings,
@@ -45,6 +62,7 @@ export function createEvaluator(
 ): Evaluator {
   const model = options.model ?? settings.model ?? (settings.modelId as LanguageModel)
   const downloadPhoto = options.downloadPhoto
+  const retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY
 
   return {
     async evaluate(post) {
@@ -55,8 +73,6 @@ export function createEvaluator(
         return { match: false, notes: 'No text or photos remain' }
       }
 
-      const prompt = readPromptFile(settings.promptPath)
-      const criteria = readCriteriaFile(settings.criteriaPath)
       const content: Array<
         | { type: 'text'; text: string }
         | { type: 'file'; mediaType: 'image'; data: Uint8Array }
@@ -75,30 +91,118 @@ export function createEvaluator(
           data,
         })),
       ]
-      const result = await generateText({
-        model,
-        system: `${prompt}\n\nCriteria:\n${criteria}`,
-        messages: [
-          {
-            role: 'user',
-            content,
-          },
-        ],
-        stopWhen: isStepCount(MAX_STEPS),
-        prepareStep: ({ stepNumber }) =>
-          stepNumber === MAX_STEPS - 1 ? { toolChoice: 'none' } : {},
-        output: Output.object({ schema: verdictSchema }),
-        maxRetries: 0,
-        timeout: RUN_TIMEOUT_MS,
-        providerOptions: {
-          google: { thinkingConfig: { includeThoughts: true } },
-        },
-        onStepEnd: (step) => logStep(link, step),
-      })
 
-      return result.output
+      const attempts = Math.max(1, retryPolicy.attempts)
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        let prompt: string
+        let criteria: string
+        try {
+          prompt = readPromptFile(settings.promptPath)
+          criteria = readCriteriaFile(settings.criteriaPath)
+        } catch (error) {
+          console.error(`post ${link}: evaluation setup failed`, error)
+          return evaluationFailure(error)
+        }
+
+        try {
+          const result = await generateText({
+            model,
+            system: `${prompt}\n\nCriteria:\n${criteria}`,
+            messages: [
+              {
+                role: 'user',
+                content,
+              },
+            ],
+            stopWhen: isStepCount(retryPolicy.maxSteps),
+            prepareStep: ({ stepNumber }) =>
+              stepNumber === retryPolicy.maxSteps - 1
+                ? { toolChoice: 'none' }
+                : {},
+            output: Output.object({ schema: verdictSchema }),
+            maxRetries: 0,
+            timeout: retryPolicy.timeoutMs,
+            providerOptions: {
+              google: { thinkingConfig: { includeThoughts: true } },
+            },
+            onStepEnd: (step) => logStep(link, step),
+          })
+
+          return result.output
+        } catch (error) {
+          console.error(`post ${link}: evaluation attempt ${attempt + 1} failed`, error)
+          if (attempt === attempts - 1) {
+            return evaluationFailure(error)
+          }
+
+          await wait(retryPolicy.backoffsMs[attempt] ?? 0)
+        }
+      }
+
+      throw new Error('evaluation retry policy produced no attempts')
     },
   }
+}
+
+export function formatEvaluationError(error: unknown): string {
+  const label = hasTimeoutCause(error) ? 'timeout' : errorName(error)
+  const message = errorMessage(error)
+    .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '')
+    .split(/\r\n|\n|\r/, 1)[0]
+    .slice(0, 200)
+  return `${label}: ${message}`
+}
+
+function evaluationFailure(error: unknown): EvaluationFailure {
+  return {
+    kind: 'evaluation-failure',
+    error: formatEvaluationError(error),
+  }
+}
+
+function errorName(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'name' in error) {
+    const name = (error as { name?: unknown }).name
+    if (typeof name === 'string' && name !== '') {
+      return name
+    }
+  }
+
+  return error instanceof Error ? error.name : 'Error'
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function hasTimeoutCause(error: unknown): boolean {
+  const seen = new Set<unknown>()
+  let current: unknown = error
+
+  while (current !== null && current !== undefined && !seen.has(current)) {
+    seen.add(current)
+    if (errorName(current) === 'TimeoutError') {
+      return true
+    }
+
+    if (typeof current !== 'object' || !('cause' in current)) {
+      return false
+    }
+
+    current = (current as { cause?: unknown }).cause
+  }
+
+  return false
+}
+
+async function wait(milliseconds: number): Promise<void> {
+  if (milliseconds <= 0) {
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, milliseconds)
+  })
 }
 
 async function downloadPhotos(

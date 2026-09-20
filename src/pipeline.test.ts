@@ -323,7 +323,7 @@ describe('Post pipeline', () => {
     })
     const postToProcess = post(-1001234567890, 'Flat for rent', 9)
 
-    await expect(pipeline.process(postToProcess)).rejects.toThrow('Saved Messages unavailable')
+    await expect(pipeline.process(postToProcess)).resolves.toBeUndefined()
     await pipeline.process(postToProcess)
 
     expect(evaluator.evaluate).toHaveBeenCalledOnce()
