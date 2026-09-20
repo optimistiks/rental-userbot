@@ -1,24 +1,24 @@
 // Sentry auto-instruments outgoing requests, and the LocationIQ URL carries the
-// token in its query string, so this request stays out of the trace entirely.
+// Token in its query string, so this request stays out of the trace entirely.
 import { suppressTracing } from "@sentry/node";
 
 import { errorMessage } from "./errors.js";
 
-export type GeocodePrecision = "building" | "place" | "street" | "area";
+type GeocodePrecision = "building" | "place" | "street" | "area";
 
-export interface GeocodeResult {
+interface GeocodeResult {
   precision: GeocodePrecision;
   lat: number;
   lon: number;
   label: string;
 }
 
-export interface GeocodeResponse {
+interface GeocodeResponse {
   results: GeocodeResult[];
 }
 
-export interface Geocoder {
-  geocode(query: string, signal?: AbortSignal): Promise<GeocodeResponse>;
+interface Geocoder {
+  geocode: (query: string, signal?: AbortSignal) => Promise<GeocodeResponse>;
 }
 
 interface LocationIqResult {
@@ -30,22 +30,26 @@ interface LocationIqResult {
   };
 }
 
-export type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
+type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
-export function precisionForMatchLevel(matchLevel: unknown): GeocodePrecision {
+function precisionForMatchLevel(matchLevel: unknown): GeocodePrecision {
   switch (matchLevel) {
-    case "building":
+    case "building": {
       return "building";
-    case "venue":
+    }
+    case "venue": {
       return "place";
-    case "street":
+    }
+    case "street": {
       return "street";
-    default:
+    }
+    default: {
       return "area";
+    }
   }
 }
 
-export function createGeocoder(
+function createGeocoder(
   settings: { url: string; token: string },
   fetcher: Fetcher = fetch,
 ): Geocoder {
@@ -88,7 +92,7 @@ export function createGeocoder(
   };
 }
 
-export class GeocoderError extends Error {
+class GeocoderError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "GeocoderError";
@@ -106,10 +110,10 @@ function toGeocodeResult(value: unknown): GeocodeResult {
   }
 
   return {
-    precision: precisionForMatchLevel(result.matchquality?.matchlevel),
+    label,
     lat,
     lon,
-    label,
+    precision: precisionForMatchLevel(result.matchquality?.matchlevel),
   };
 }
 
@@ -125,3 +129,14 @@ async function responseError(response: Response, token: string): Promise<string>
 function redact(message: string, token: string): string {
   return token === "" ? message : message.split(token).join("[redacted]");
 }
+
+export {
+  type GeocodePrecision,
+  type GeocodeResult,
+  type GeocodeResponse,
+  type Geocoder,
+  type Fetcher,
+  precisionForMatchLevel,
+  createGeocoder,
+  GeocoderError,
+};

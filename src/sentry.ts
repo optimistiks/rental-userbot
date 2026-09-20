@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/node";
 
-export type SentryApi = Pick<
+type SentryApi = Pick<
   typeof Sentry,
   | "captureException"
   | "experimentalUseDiagnosticsChannelInjection"
@@ -9,29 +9,26 @@ export type SentryApi = Pick<
   | "withScope"
 >;
 
-export type ErrorPhase = "evaluation" | "notification" | "pipeline";
+type ErrorPhase = "evaluation" | "notification" | "pipeline";
 
-export interface ErrorContext {
+interface ErrorContext {
   postLink?: string;
   phase?: ErrorPhase;
 }
 
-export interface ErrorReporter {
+interface ErrorReporter {
   readonly enabled: boolean;
-  run<T>(postLink: string, operation: () => Promise<T>): Promise<T>;
-  captureException(error: unknown, context?: ErrorContext): void;
+  run: <T>(postLink: string, operation: () => Promise<T>) => Promise<T>;
+  captureException: (error: unknown, context?: ErrorContext) => void;
 }
 
 const disabledReporter: ErrorReporter = {
+  captureException: () => undefined,
   enabled: false,
   run: (_postLink, operation) => operation(),
-  captureException: () => undefined,
 };
 
-export function createSentryReporter(
-  dsn: string | undefined,
-  api: SentryApi = Sentry,
-): ErrorReporter {
+function createSentryReporter(dsn?: string, api: SentryApi = Sentry): ErrorReporter {
   if (dsn === undefined || dsn.trim() === "") {
     return disabledReporter;
   }
@@ -40,17 +37,6 @@ export function createSentryReporter(
     // The diagnostics-channel integration is the Sentry-supported path for ai@7.
     api.experimentalUseDiagnosticsChannelInjection();
     api.init({
-      dsn,
-      tracesSampleRate: 1,
-      sendDefaultPii: false,
-      dataCollection: {
-        userInfo: false,
-        httpHeaders: false,
-        httpBodies: [],
-        urlQueryParams: false,
-        genAI: { inputs: true, outputs: true },
-        stackFrameVariables: false,
-      },
       beforeSend: (event) => sanitizeSentryValue(event) as typeof event,
       beforeSendSpan: (span) => {
         const data = { ...span.data };
@@ -61,16 +47,49 @@ export function createSentryReporter(
         }
         return { ...span, data };
       },
+      dataCollection: {
+        genAI: { inputs: true, outputs: true },
+        httpBodies: [],
+        httpHeaders: false,
+        stackFrameVariables: false,
+        urlQueryParams: false,
+        userInfo: false,
+      },
+      dsn,
+      sendDefaultPii: false,
+      tracesSampleRate: 1,
     });
   } catch {
     // Sentry is strictly best-effort. The bot must work when the laptop is offline
-    // or a DSN is malformed.
+    // Or a DSN is malformed.
     return disabledReporter;
   }
 
-  const capturedErrors = new WeakSet<object>();
+  const capturedErrors = new WeakSet();
 
   return {
+    captureException(error, context) {
+      if (typeof error === "object" && error !== null) {
+        if (capturedErrors.has(error)) {
+          return;
+        }
+        capturedErrors.add(error);
+      }
+
+      try {
+        api.withScope((scope) => {
+          if (context?.postLink !== undefined) {
+            scope.setContext("post", { link: context.postLink });
+          }
+          if (context?.phase !== undefined) {
+            scope.setTag("phase", context.phase);
+          }
+          api.captureException(error);
+        });
+      } catch {
+        // Reporting must never change pipeline behavior.
+      }
+    },
     enabled: true,
     run<T>(postLink: string, operation: () => Promise<T>) {
       // The span has to wrap the run to measure it, but Sentry must never change
@@ -94,43 +113,21 @@ export function createSentryReporter(
         return started ?? operation();
       }
     },
-    captureException(error, context) {
-      if (typeof error === "object" && error !== null) {
-        if (capturedErrors.has(error)) {
-          return;
-        }
-        capturedErrors.add(error);
-      }
-
-      try {
-        api.withScope((scope) => {
-          if (context?.postLink !== undefined) {
-            scope.setContext("post", { link: context.postLink });
-          }
-          if (context?.phase !== undefined) {
-            scope.setTag("phase", context.phase);
-          }
-          api.captureException(error);
-        });
-      } catch {
-        // Reporting must never change pipeline behavior.
-      }
-    },
   };
 }
 
-export function sanitizeSentryText(value: string): string {
+function sanitizeSentryText(value: string): string {
   return value
-    .replace(/([?&](?:key|token|api[_-]?key|authorization)=)[^&#\s]*/gi, "$1[redacted]")
-    .replace(
-      /((?:authorization|proxy-authorization|x-api-key|api[_-]?key|apikey|access[_-]?token|token|secret|password)\s*[:=]\s*(?:Bearer\s+)?)[^,\s;"'}]+/gi,
+    .replaceAll(/([?&](?:key|token|api[_-]?key|authorization)=)[^&#\s]*/giu, "$1[redacted]")
+    .replaceAll(
+      /((?:authorization|proxy-authorization|x-api-key|api[_-]?key|apikey|access[_-]?token|token|secret|password)\s*[:=]\s*(?:Bearer\s+)?)[^,\s;"'}]+/giu,
       "$1[redacted]",
     )
-    .replace(/(?:data[\\/])?(?:session|bot)\.sqlite/gi, "[redacted database]");
+    .replaceAll(/(?:data[\\/])?(?:session|bot)\.sqlite/giu, "[redacted database]");
 }
 
 const sensitiveKey =
-  /(?:api[_-]?key|apikey|authorization|proxy-authorization|access[_-]?token|token|secret|password|session)/i;
+  /(?:api[_-]?key|apikey|authorization|proxy-authorization|access[_-]?token|token|secret|password|session)/iu;
 
 function sanitizeSentryValue(value: unknown, seen = new WeakMap<object, unknown>()): unknown {
   if (typeof value === "string") {
@@ -165,9 +162,19 @@ function sanitizeSentryValue(value: unknown, seen = new WeakMap<object, unknown>
 
 let runtimeReporter: ErrorReporter = disabledReporter;
 
-export function initializeSentry(dsn: string | undefined): ErrorReporter {
+function initializeSentry(dsn: string | undefined): ErrorReporter {
   if (!runtimeReporter.enabled) {
     runtimeReporter = createSentryReporter(dsn);
   }
   return runtimeReporter;
 }
+
+export {
+  type SentryApi,
+  type ErrorPhase,
+  type ErrorContext,
+  type ErrorReporter,
+  createSentryReporter,
+  sanitizeSentryText,
+  initializeSentry,
+};

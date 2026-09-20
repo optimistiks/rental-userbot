@@ -10,22 +10,22 @@ import type { PhotoRef } from "./telegram.js";
 import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
 
 const usage = {
-  inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
-  outputTokens: { total: 5, text: 5, reasoning: undefined },
+  inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
+  outputTokens: { reasoning: undefined, text: 5, total: 5 },
 };
 
-function modelFor(...verdicts: Array<{ match: boolean; notes: string }>) {
+function modelFor(...verdicts: { match: boolean; notes: string }[]) {
   return new MockLanguageModelV4({
     doGenerate: verdicts.map((verdict) => ({
-      content: [{ type: "text" as const, text: JSON.stringify(verdict) }],
-      finishReason: { unified: "stop" as const, raw: undefined },
+      content: [{ text: JSON.stringify(verdict), type: "text" as const }],
+      finishReason: { raw: undefined, unified: "stop" as const },
       usage,
       warnings: [],
     })),
   });
 }
 
-describe("Evaluator", () => {
+describe("evaluator", () => {
   it("runs agent telemetry under the Post link and reports evaluation failures", async () => {
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
@@ -38,31 +38,31 @@ describe("Evaluator", () => {
       },
     });
     const errorReporter: ErrorReporter = {
+      captureException: vi.fn(),
       enabled: true,
       run: vi.fn(async (_link, operation) => operation()),
-      captureException: vi.fn(),
     };
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
+      { criteriaPath, modelId: "test/model", promptPath },
       {
-        model,
         errorReporter,
-        retryPolicy: { attempts: 1, backoffsMs: [], timeoutMs: 100, maxSteps: 8 },
+        model,
+        retryPolicy: { attempts: 1, backoffsMs: [], maxSteps: 8, timeoutMs: 100 },
       },
     );
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockReturnValue(undefined);
 
     await expect(
       evaluator.evaluate({
-        text: "Flat",
         link: "https://t.me/example/53",
+        text: "Flat",
       }),
     ).resolves.toMatchObject({ kind: "evaluation-failure" });
 
     expect(errorReporter.run).toHaveBeenCalledWith("https://t.me/example/53", expect.any(Function));
     expect(errorReporter.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      postLink: "https://t.me/example/53",
       phase: "evaluation",
+      postLink: "https://t.me/example/53",
     });
     error.mockRestore();
   });
@@ -76,10 +76,10 @@ describe("Evaluator", () => {
     const geocode = vi.fn(async () => ({
       results: [
         {
-          precision: "building" as const,
+          label: "Gorgasali 33, Batumi",
           lat: 41.6481086,
           lon: 41.6393883,
-          label: "Gorgasali 33, Batumi",
+          precision: "building" as const,
         },
       ],
     }));
@@ -89,42 +89,42 @@ describe("Evaluator", () => {
         {
           content: [
             {
-              type: "tool-call",
+              input: JSON.stringify({ query: "Gorgasali 33" }),
               toolCallId: "geocode-1",
               toolName: "geocode",
-              input: JSON.stringify({ query: "Gorgasali 33" }),
+              type: "tool-call",
             },
           ],
-          finishReason: { unified: "tool-calls", raw: undefined },
+          finishReason: { raw: undefined, unified: "tool-calls" },
           usage,
           warnings: [],
         },
         {
           content: [
             {
-              type: "tool-call",
+              input: JSON.stringify({ lat: 41.6481086, lon: 41.6393883 }),
               toolCallId: "in-zone-1",
               toolName: "inZone",
-              input: JSON.stringify({ lat: 41.6481086, lon: 41.6393883 }),
+              type: "tool-call",
             },
           ],
-          finishReason: { unified: "tool-calls", raw: undefined },
+          finishReason: { raw: undefined, unified: "tool-calls" },
           usage,
           warnings: [],
         },
         {
           content: [
-            { type: "text", text: JSON.stringify({ match: true, notes: "In Old Batumi" }) },
+            { text: JSON.stringify({ match: true, notes: "In Old Batumi" }), type: "text" },
           ],
-          finishReason: { unified: "stop", raw: undefined },
+          finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
         },
       ],
     });
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
+      { criteriaPath, modelId: "test/model", promptPath },
       {
         model,
         tools: createEvaluatorTools({ geocode, inZone }),
@@ -133,10 +133,10 @@ describe("Evaluator", () => {
 
     await expect(
       evaluator.evaluate({
-        text: "Flat at Gorgasali 33",
         link: "https://t.me/example/52",
+        text: "Flat at Gorgasali 33",
       }),
-    ).resolves.toEqual({ match: true, notes: "In Old Batumi" });
+    ).resolves.toStrictEqual({ match: true, notes: "In Old Batumi" });
 
     expect(geocode).toHaveBeenCalledWith("Gorgasali 33", expect.anything());
     expect(inZone).toHaveBeenCalledWith({ lat: 41.6481086, lon: 41.6393883 });
@@ -144,11 +144,11 @@ describe("Evaluator", () => {
     expect(model.doGenerateCalls[1].prompt).toContainEqual(
       expect.objectContaining({ role: "tool" }),
     );
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/geocode ".*" → /));
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/geocode ".*" → /u));
     expect(log).toHaveBeenCalledWith(
-      expect.stringMatching(/inZone \(41\.6481, 41\.6394\) → inside Old Batumi/),
+      expect.stringMatching(/inZone \(41\.6481, 41\.6394\) → inside Old Batumi/u),
     );
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/done in .*s, \d+ steps?, /));
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/done in .*s, \d+ steps?, /u));
     log.mockRestore();
   });
 
@@ -163,21 +163,21 @@ describe("Evaluator", () => {
         {
           content: [
             {
-              type: "tool-call",
+              input: JSON.stringify({ query: "Unknown address" }),
               toolCallId: "geocode-error-1",
               toolName: "geocode",
-              input: JSON.stringify({ query: "Unknown address" }),
+              type: "tool-call",
             },
           ],
-          finishReason: { unified: "tool-calls", raw: undefined },
+          finishReason: { raw: undefined, unified: "tool-calls" },
           usage,
           warnings: [],
         },
         {
           content: [
-            { type: "text", text: JSON.stringify({ match: false, notes: "Location unclear" }) },
+            { text: JSON.stringify({ match: false, notes: "Location unclear" }), type: "text" },
           ],
-          finishReason: { unified: "stop", raw: undefined },
+          finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
         },
@@ -187,14 +187,14 @@ describe("Evaluator", () => {
       throw new Error("provider unavailable");
     });
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
+      { criteriaPath, modelId: "test/model", promptPath },
       {
         model,
         tools: createEvaluatorTools({ geocode, inZone: () => ({ inside: false, zone: null }) }),
       },
     );
 
-    await expect(evaluator.evaluate({ text: "Flat" })).resolves.toEqual({
+    await expect(evaluator.evaluate({ text: "Flat" })).resolves.toStrictEqual({
       match: false,
       notes: "Location unclear",
     });
@@ -214,32 +214,32 @@ describe("Evaluator", () => {
         {
           content: [
             {
-              type: "tool-call",
+              input: JSON.stringify({ query: 42 }),
               toolCallId: "invalid-geocode-1",
               toolName: "geocode",
-              input: JSON.stringify({ query: 42 }),
+              type: "tool-call",
             },
           ],
-          finishReason: { unified: "tool-calls", raw: undefined },
+          finishReason: { raw: undefined, unified: "tool-calls" },
           usage,
           warnings: [],
         },
         {
           content: [
             {
-              type: "text",
               text: JSON.stringify({ match: false, notes: "Invalid location query" }),
+              type: "text",
             },
           ],
-          finishReason: { unified: "stop", raw: undefined },
+          finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
         },
       ],
     });
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
+      { criteriaPath, modelId: "test/model", promptPath },
       {
         model,
         tools: createEvaluatorTools({
@@ -249,11 +249,11 @@ describe("Evaluator", () => {
       },
     );
 
-    await expect(evaluator.evaluate({ text: "Flat" })).resolves.toEqual({
+    await expect(evaluator.evaluate({ text: "Flat" })).resolves.toStrictEqual({
       match: false,
       notes: "Invalid location query",
     });
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/geocode .* → failed: /));
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/geocode .* → failed: /u));
     log.mockRestore();
   });
 
@@ -268,12 +268,12 @@ describe("Evaluator", () => {
       { match: false, notes: "Second notes" },
     );
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
+      { criteriaPath, modelId: "test/model", promptPath },
       { model },
     );
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 
-    await expect(evaluator.evaluate({ text: "First Post" })).resolves.toEqual({
+    await expect(evaluator.evaluate({ text: "First Post" })).resolves.toStrictEqual({
       match: true,
       notes: "First notes",
     });
@@ -281,7 +281,7 @@ describe("Evaluator", () => {
     writeFileSync(promptPath, "Prompt version two");
     writeFileSync(criteriaPath, "Criteria version two");
 
-    await expect(evaluator.evaluate({ text: "Second Post" })).resolves.toEqual({
+    await expect(evaluator.evaluate({ text: "Second Post" })).resolves.toStrictEqual({
       match: false,
       notes: "Second notes",
     });
@@ -295,7 +295,7 @@ describe("Evaluator", () => {
     expect(secondPrompt).toContain("Prompt version two");
     expect(secondPrompt).toContain("Criteria version two");
     expect(secondPrompt).toContain("Second Post");
-    expect(log).toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(expect.any(String));
     log.mockRestore();
   });
 
@@ -313,43 +313,43 @@ describe("Evaluator", () => {
       .mockResolvedValueOnce(new Uint8Array([3, 4]));
     const model = modelFor({ match: true, notes: "Looks good" });
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
-      { model, downloadPhoto },
+      { criteriaPath, modelId: "test/model", promptPath },
+      { downloadPhoto, model },
     );
 
     await expect(
       evaluator.evaluate({
-        text: "Flat with photos",
         link: "https://t.me/example/50",
         photos: [firstPhoto, secondPhoto],
+        text: "Flat with photos",
       }),
-    ).resolves.toEqual({ match: true, notes: "Looks good" });
+    ).resolves.toStrictEqual({ match: true, notes: "Looks good" });
 
     expect(downloadPhoto).toHaveBeenNthCalledWith(1, firstPhoto);
     expect(downloadPhoto).toHaveBeenNthCalledWith(2, secondPhoto);
 
-    const prompt = model.doGenerateCalls[0].prompt;
+    const { prompt } = model.doGenerateCalls[0];
     expect(prompt).toHaveLength(2);
-    expect(prompt?.[0]).toEqual(expect.objectContaining({ role: "system" }));
-    expect(prompt?.[1]).toEqual(expect.objectContaining({ role: "user" }));
-    const userContent = (prompt?.[1] as { content: Array<unknown> }).content;
-    expect(userContent[0]).toEqual({
-      type: "text",
-      text: expect.stringContaining("Flat with photos"),
+    expect(prompt?.[0]).toStrictEqual(expect.objectContaining({ role: "system" }));
+    expect(prompt?.[1]).toStrictEqual(expect.objectContaining({ role: "user" }));
+    const userContent = (prompt?.[1] as { content: unknown[] }).content;
+    expect(userContent[0]).toStrictEqual({
       providerOptions: undefined,
+      text: expect.stringContaining("Flat with photos"),
+      type: "text",
     });
-    expect(userContent[1]).toEqual(
+    expect(userContent[1]).toStrictEqual(
       expect.objectContaining({
-        type: "file",
+        data: { data: new Uint8Array([1, 2]), type: "data" },
         mediaType: "image",
-        data: { type: "data", data: new Uint8Array([1, 2]) },
+        type: "file",
       }),
     );
-    expect(userContent[2]).toEqual(
+    expect(userContent[2]).toStrictEqual(
       expect.objectContaining({
-        type: "file",
+        data: { data: new Uint8Array([3, 4]), type: "data" },
         mediaType: "image",
-        data: { type: "data", data: new Uint8Array([3, 4]) },
+        type: "file",
       }),
     );
   });
@@ -366,19 +366,19 @@ describe("Evaluator", () => {
     });
     const model = modelFor({ match: true, notes: "Should not run" });
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
-      { model, downloadPhoto },
+      { criteriaPath, modelId: "test/model", promptPath },
+      { downloadPhoto, model },
     );
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 
     await expect(
       evaluator.evaluate({
-        text: "",
         link: "https://t.me/example/51",
         photos: [firstPhoto],
+        text: "",
       }),
-    ).resolves.toEqual({ match: false, notes: "No text or photos remain" });
+    ).resolves.toStrictEqual({ match: false, notes: "No text or photos remain" });
 
     expect(model.doGenerateCalls).toHaveLength(0);
     expect(warn).toHaveBeenCalledWith(

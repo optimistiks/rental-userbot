@@ -6,14 +6,14 @@ import { openDedupeStore, postKey } from "./dedupe-store.js";
 
 const post = (overrides: Partial<Post>): Post => ({
   chatId: -1001234567890,
-  messageIds: [42],
-  text: "Flat for rent",
-  photos: [],
   link: "https://t.me/example/42",
+  messageIds: [42],
+  photos: [],
+  text: "Flat for rent",
   ...overrides,
 });
 
-describe("postKey", () => {
+describe(postKey, () => {
   it("uses the chat and message ID for a single-message Post", () => {
     expect(postKey(post({ messageIds: [42] }))).toBe("-1001234567890:42");
   });
@@ -25,7 +25,7 @@ describe("postKey", () => {
   });
 });
 
-describe("openDedupeStore", () => {
+describe(openDedupeStore, () => {
   it("creates the processed-posts store in the supplied SQLite database", () => {
     const store = openDedupeStore(":memory:");
 

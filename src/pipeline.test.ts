@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
+import type { Listing } from "./evaluator.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef, Post } from "./telegram.js";
 
@@ -12,26 +13,26 @@ import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
 import { createPostPipeline } from "./pipeline.js";
 
 const usage = {
-  inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
-  outputTokens: { total: 5, text: 5, reasoning: undefined },
+  inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
+  outputTokens: { reasoning: undefined, text: 5, total: 5 },
 };
 
 function post(chatId: number, text: string, id: number): Post {
   return {
     chatId,
-    messageIds: [id],
-    text,
-    photos: [],
     link: `https://t.me/example/${id}`,
+    messageIds: [id],
+    photos: [],
+    text,
   };
 }
 
-describe("Post pipeline", () => {
+describe("post pipeline", () => {
   it("still notifies and marks the Post when the Evaluator throws", async () => {
     const errorReporter: ErrorReporter = {
+      captureException: vi.fn(),
       enabled: true,
       run: vi.fn(async (_link, operation) => operation()),
-      captureException: vi.fn(),
     };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
@@ -39,26 +40,26 @@ describe("Post pipeline", () => {
         throw new Error("evaluator exploded");
       }),
     };
-    const telegram = { sendToMe: vi.fn(async () => undefined) };
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const telegram = { sendToMe: vi.fn(async () => {}) };
+    const error = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
-      evaluator,
-      telegram,
       dedupeStore,
       errorReporter,
+      evaluator,
+      telegram,
     });
 
-    await pipeline.process(post(-1001234567890, "Flat for rent", 77));
+    await pipeline.process(post(-1_001_234_567_890, "Flat for rent", 77));
 
     expect(telegram.sendToMe).toHaveBeenCalledWith(
       "https://t.me/example/77\n⚠️ couldn't evaluate: Error: evaluator exploded",
     );
     expect(dedupeStore.isProcessed("-1001234567890:77")).toBe(true);
     expect(errorReporter.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      postLink: "https://t.me/example/77",
       phase: "evaluation",
+      postLink: "https://t.me/example/77",
     });
 
     error.mockRestore();
@@ -68,9 +69,9 @@ describe("Post pipeline", () => {
 
   it("reports a failed notification with the Post link without blocking the queue", async () => {
     const errorReporter: ErrorReporter = {
+      captureException: vi.fn(),
       enabled: true,
       run: vi.fn(async (_link, operation) => operation()),
-      captureException: vi.fn(),
     };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
@@ -81,22 +82,22 @@ describe("Post pipeline", () => {
         throw new Error("Saved Messages unavailable");
       }),
     };
-    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "error").mockReturnValue(undefined);
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
-      evaluator,
-      telegram,
       dedupeStore,
       errorReporter,
+      evaluator,
+      telegram,
     });
 
     await expect(
-      pipeline.process(post(-1001234567890, "Flat for rent", 54)),
+      pipeline.process(post(-1_001_234_567_890, "Flat for rent", 54)),
     ).resolves.toBeUndefined();
 
     expect(errorReporter.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      postLink: "https://t.me/example/54",
       phase: "notification",
+      postLink: "https://t.me/example/54",
     });
     log.mockRestore();
     dedupeStore.close();
@@ -113,32 +114,32 @@ describe("Post pipeline", () => {
         {
           content: [
             {
-              type: "tool-call",
+              input: JSON.stringify({ query: "Gorgasali 33" }),
               toolCallId: "geocode-1",
               toolName: "geocode",
-              input: JSON.stringify({ query: "Gorgasali 33" }),
+              type: "tool-call",
             },
           ],
-          finishReason: { unified: "tool-calls", raw: undefined },
+          finishReason: { raw: undefined, unified: "tool-calls" },
           usage,
           warnings: [],
         },
         {
           content: [
             {
-              type: "tool-call",
+              input: JSON.stringify({ lat: 41.6481086, lon: 41.6393883 }),
               toolCallId: "in-zone-1",
               toolName: "inZone",
-              input: JSON.stringify({ lat: 41.6481086, lon: 41.6393883 }),
+              type: "tool-call",
             },
           ],
-          finishReason: { unified: "tool-calls", raw: undefined },
+          finishReason: { raw: undefined, unified: "tool-calls" },
           usage,
           warnings: [],
         },
         {
-          content: [{ type: "text", text: JSON.stringify({ match: true, notes: "Agent notes" }) }],
-          finishReason: { unified: "stop", raw: undefined },
+          content: [{ text: JSON.stringify({ match: true, notes: "Agent notes" }), type: "text" }],
+          finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
         },
@@ -147,28 +148,28 @@ describe("Post pipeline", () => {
     const geocode = vi.fn(async () => ({
       results: [
         {
-          precision: "building" as const,
+          label: "Gorgasali 33, Batumi",
           lat: 41.6481086,
           lon: 41.6393883,
-          label: "Gorgasali 33, Batumi",
+          precision: "building" as const,
         },
       ],
     }));
     const inZone = vi.fn(() => ({ inside: true, zone: "Old Batumi" }));
-    const telegram = { sendToMe: vi.fn(async () => undefined) };
+    const telegram = { sendToMe: vi.fn(async () => {}) };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
+      { criteriaPath, modelId: "test/model", promptPath },
       { model, tools: createEvaluatorTools({ geocode, inZone }) },
     );
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator,
       telegram,
-      dedupeStore,
     });
 
-    await pipeline.process(post(-1001234567890, "Flat at Gorgasali 33", 10));
+    await pipeline.process(post(-1_001_234_567_890, "Flat at Gorgasali 33", 10));
 
     expect(telegram.sendToMe).toHaveBeenCalledWith("https://t.me/example/10\nAgent notes");
     expect(model.doGenerateCalls).toHaveLength(3);
@@ -184,41 +185,41 @@ describe("Post pipeline", () => {
     const model = new MockLanguageModelV4({
       doGenerate: [
         {
-          content: [{ type: "text", text: JSON.stringify({ match: true, notes: "Looks good" }) }],
-          finishReason: { unified: "stop", raw: undefined },
+          content: [{ text: JSON.stringify({ match: true, notes: "Looks good" }), type: "text" }],
+          finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
         },
         {
           content: [
-            { type: "text", text: JSON.stringify({ match: false, notes: "Too expensive" }) },
+            { text: JSON.stringify({ match: false, notes: "Too expensive" }), type: "text" },
           ],
-          finishReason: { unified: "stop", raw: undefined },
+          finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
         },
       ],
     });
-    const telegram = { sendToMe: vi.fn(async () => undefined) };
+    const telegram = { sendToMe: vi.fn(async () => {}) };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
+      { criteriaPath, modelId: "test/model", promptPath },
       { model },
     );
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator,
       telegram,
-      dedupeStore,
     });
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 
-    await pipeline.process(post(-1001234567890, "Flat for rent", 1));
-    await pipeline.process(post(-1001234567890, "Another flat", 2));
-    await pipeline.process(post(-1009876543210, "Unwatched flat", 3));
-    await pipeline.process(post(-1001234567890, "", 4));
+    await pipeline.process(post(-1_001_234_567_890, "Flat for rent", 1));
+    await pipeline.process(post(-1_001_234_567_890, "Another flat", 2));
+    await pipeline.process(post(-1_009_876_543_210, "Unwatched flat", 3));
+    await pipeline.process(post(-1_001_234_567_890, "", 4));
 
-    expect(telegram.sendToMe).toHaveBeenCalledOnce();
+    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe).toHaveBeenCalledWith("https://t.me/example/1\nLooks good");
     expect(model.doGenerateCalls).toHaveLength(2);
     expect(log).toHaveBeenCalledWith("post https://t.me/example/1: Match — Looks good");
@@ -238,8 +239,8 @@ describe("Post pipeline", () => {
     const secondPhoto = { __photoRef: true } as PhotoRef;
     const model = new MockLanguageModelV4({
       doGenerate: {
-        content: [{ type: "text", text: JSON.stringify({ match: true, notes: "Looks good" }) }],
-        finishReason: { unified: "stop", raw: undefined },
+        content: [{ text: JSON.stringify({ match: true, notes: "Looks good" }), type: "text" }],
+        finishReason: { raw: undefined, unified: "stop" },
         usage,
         warnings: [],
       },
@@ -249,42 +250,42 @@ describe("Post pipeline", () => {
       .mockResolvedValueOnce(new Uint8Array([1]))
       .mockResolvedValueOnce(new Uint8Array([2]));
     const telegram = {
-      sendToMe: vi.fn(async () => undefined),
       downloadPhoto,
+      sendToMe: vi.fn(async () => undefined),
     };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
-      { model, downloadPhoto },
+      { criteriaPath, modelId: "test/model", promptPath },
+      { downloadPhoto, model },
     );
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator,
       telegram,
-      dedupeStore,
     });
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 
     await pipeline.process({
-      chatId: -1001234567890,
-      messageIds: [60, 61],
       albumId: "album-8",
-      text: "Flat with a balcony",
-      photos: [firstPhoto, secondPhoto],
+      chatId: -1001234567890,
       link: "https://t.me/example/60",
+      messageIds: [60, 61],
+      photos: [firstPhoto, secondPhoto],
+      text: "Flat with a balcony",
     });
     await pipeline.process({
-      chatId: -1001234567890,
-      messageIds: [62],
       albumId: "album-8",
-      text: "Late album part",
-      photos: [firstPhoto],
+      chatId: -1001234567890,
       link: "https://t.me/example/62",
+      messageIds: [62],
+      photos: [firstPhoto],
+      text: "Late album part",
     });
 
     expect(downloadPhoto).toHaveBeenCalledTimes(2);
     expect(model.doGenerateCalls).toHaveLength(1);
-    expect(telegram.sendToMe).toHaveBeenCalledOnce();
+    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe).toHaveBeenCalledWith("https://t.me/example/60\nLooks good");
     log.mockRestore();
     dedupeStore.close();
@@ -299,8 +300,8 @@ describe("Post pipeline", () => {
     const photo = { __photoRef: true } as PhotoRef;
     const model = new MockLanguageModelV4({
       doGenerate: {
-        content: [{ type: "text", text: JSON.stringify({ match: true, notes: "Should not run" }) }],
-        finishReason: { unified: "stop", raw: undefined },
+        content: [{ text: JSON.stringify({ match: true, notes: "Should not run" }), type: "text" }],
+        finishReason: { raw: undefined, unified: "stop" },
         usage,
         warnings: [],
       },
@@ -310,23 +311,23 @@ describe("Post pipeline", () => {
     });
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
-      { modelId: "test/model", promptPath, criteriaPath },
-      { model, downloadPhoto },
+      { criteriaPath, modelId: "test/model", promptPath },
+      { downloadPhoto, model },
     );
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator,
       telegram: { sendToMe: vi.fn(async () => undefined) },
-      dedupeStore,
     });
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 
     await pipeline.process({
       chatId: -1001234567890,
-      messageIds: [70],
-      text: "",
-      photos: [photo],
       link: "https://t.me/example/70",
+      messageIds: [70],
+      photos: [photo],
+      text: "",
     });
 
     expect(model.doGenerateCalls).toHaveLength(0);
@@ -352,19 +353,21 @@ describe("Post pipeline", () => {
     };
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator,
       telegram: { sendToMe: vi.fn(async () => undefined) },
-      dedupeStore,
     });
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const first = pipeline.process(post(-1001234567890, "Flat for rent", 5));
-    const duplicate = pipeline.process(post(-1001234567890, "Flat for rent", 5));
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const first = pipeline.process(post(-1_001_234_567_890, "Flat for rent", 5));
+    const duplicate = pipeline.process(post(-1_001_234_567_890, "Flat for rent", 5));
 
-    await vi.waitFor(() => expect(evaluator.evaluate).toHaveBeenCalledOnce());
+    await vi.waitFor(() => {
+      expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+    });
     releaseFirst();
     await Promise.all([first, duplicate]);
 
-    expect(evaluator.evaluate).toHaveBeenCalledOnce();
+    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
     expect(dedupeStore.isProcessed("-1001234567890:5")).toBe(true);
     log.mockRestore();
     dedupeStore.close();
@@ -380,12 +383,13 @@ describe("Post pipeline", () => {
     let maximumActiveEvaluations = 0;
     const evaluationOrder: number[] = [];
     const evaluator = {
-      evaluate: vi.fn(async (post: Post) => {
+      evaluate: vi.fn(async (listing: Listing) => {
         activeEvaluations += 1;
         maximumActiveEvaluations = Math.max(maximumActiveEvaluations, activeEvaluations);
-        evaluationOrder.push(post.messageIds[0]);
+        const messageId = Number(listing.link?.split("/").at(-1));
+        evaluationOrder.push(messageId);
 
-        if (post.messageIds[0] === 6) {
+        if (messageId === 6) {
           await firstEvaluation;
         }
 
@@ -395,20 +399,22 @@ describe("Post pipeline", () => {
     };
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator,
       telegram: { sendToMe: vi.fn(async () => undefined) },
-      dedupeStore,
     });
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const first = pipeline.process(post(-1001234567890, "First flat", 6));
-    const second = pipeline.process(post(-1001234567890, "Second flat", 7));
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const first = pipeline.process(post(-1_001_234_567_890, "First flat", 6));
+    const second = pipeline.process(post(-1_001_234_567_890, "Second flat", 7));
 
-    await vi.waitFor(() => expect(evaluator.evaluate).toHaveBeenCalledOnce());
-    expect(evaluationOrder).toEqual([6]);
+    await vi.waitFor(() => {
+      expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+    });
+    expect(evaluationOrder).toStrictEqual([6]);
     releaseFirst();
     await Promise.all([first, second]);
 
-    expect(evaluationOrder).toEqual([6, 7]);
+    expect(evaluationOrder).toStrictEqual([6, 7]);
     expect(maximumActiveEvaluations).toBe(1);
     log.mockRestore();
     dedupeStore.close();
@@ -419,26 +425,26 @@ describe("Post pipeline", () => {
     const firstEvaluator = { evaluate: vi.fn(async () => ({ match: false, notes: "No match" })) };
     const firstPipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator: firstEvaluator,
       telegram: { sendToMe: vi.fn(async () => undefined) },
-      dedupeStore,
     });
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const firstPost = post(-1001234567890, "Already processed", 8);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const firstPost = post(-1_001_234_567_890, "Already processed", 8);
 
     await firstPipeline.process(firstPost);
 
     const secondEvaluator = { evaluate: vi.fn(async () => ({ match: false, notes: "No match" })) };
     const secondPipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator: secondEvaluator,
       telegram: { sendToMe: vi.fn(async () => undefined) },
-      dedupeStore,
     });
 
     await secondPipeline.process(firstPost);
 
-    expect(firstEvaluator.evaluate).toHaveBeenCalledOnce();
+    expect(firstEvaluator.evaluate).toHaveBeenCalledTimes(1);
     expect(secondEvaluator.evaluate).not.toHaveBeenCalled();
     log.mockRestore();
     dedupeStore.close();
@@ -456,17 +462,17 @@ describe("Post pipeline", () => {
     };
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator,
       telegram,
-      dedupeStore,
     });
-    const postToProcess = post(-1001234567890, "Flat for rent", 9);
+    const postToProcess = post(-1_001_234_567_890, "Flat for rent", 9);
 
     await expect(pipeline.process(postToProcess)).resolves.toBeUndefined();
     await pipeline.process(postToProcess);
 
-    expect(evaluator.evaluate).toHaveBeenCalledOnce();
-    expect(telegram.sendToMe).toHaveBeenCalledOnce();
+    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(dedupeStore.isProcessed("-1001234567890:9")).toBe(true);
     dedupeStore.close();
   });

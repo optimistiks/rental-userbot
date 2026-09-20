@@ -1,10 +1,10 @@
-export function errorMessage(error: unknown): string {
+function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function errorName(error: unknown): string {
+function errorName(error: unknown): string {
   if (typeof error === "object" && error !== null && "name" in error) {
-    const name = (error as { name?: unknown }).name;
+    const { name } = error as { name?: unknown };
     if (typeof name === "string" && name !== "") {
       return name;
     }
@@ -12,3 +12,5 @@ export function errorName(error: unknown): string {
 
   return error instanceof Error ? error.name : "Error";
 }
+
+export { errorMessage, errorName };

@@ -12,19 +12,19 @@ const settings = (
   promptPath = criteriaPath,
   zonePath = join(process.cwd(), "data.example/zone.geojson"),
 ): Settings => ({
-  apiId: 123456,
-  apiHash: "hash",
-  channelIds: [-1001234567890],
   aiGatewayApiKey: "gateway-key",
-  modelId: "test/model",
-  locationIqToken: "locationiq-token",
-  geocoderUrl: "http://localhost:1234/search",
+  apiHash: "hash",
+  apiId: 123456,
+  channelIds: [-1001234567890],
   criteriaPath,
+  geocoderUrl: "http://localhost:1234/search",
+  locationIqToken: "locationiq-token",
+  modelId: "test/model",
   promptPath,
   zonePath,
 });
 
-describe("initializeStartup", () => {
+describe(initializeStartup, () => {
   it("checks the Criteria file and initializes a SQLite Dedupe Store", () => {
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const criteriaPath = join(directory, "criteria.md");
@@ -37,8 +37,8 @@ describe("initializeStartup", () => {
   });
 
   it("fails before opening the database when Criteria cannot be read", () => {
-    expect(() => initializeStartup(settings("/missing/criteria.md"), ":memory:")).toThrowError(
-      /Criteria file/,
+    expect(() => initializeStartup(settings("/missing/criteria.md"), ":memory:")).toThrow(
+      /Criteria file/u,
     );
   });
 
@@ -48,8 +48,8 @@ describe("initializeStartup", () => {
     const promptPath = join(directory, "prompt.md");
     writeFileSync(criteriaPath, "Criteria text");
 
-    expect(() => initializeStartup(settings(criteriaPath, promptPath), ":memory:")).toThrowError(
-      new RegExp(`Prompt file .*${promptPath}`),
+    expect(() => initializeStartup(settings(criteriaPath, promptPath), ":memory:")).toThrow(
+      new RegExp(`Prompt file .*${promptPath}`, "u"),
     );
   });
 
@@ -63,20 +63,20 @@ describe("initializeStartup", () => {
 
     expect(() =>
       initializeStartup(settings(criteriaPath, promptPath, zonePath), ":memory:"),
-    ).toThrowError(new RegExp(`Zone file .*${zonePath}`));
+    ).toThrow(new RegExp(`Zone file .*${zonePath}`, "u"));
   });
 });
 
-describe("announceStartup", () => {
+describe(announceStartup, () => {
   it("sends the startup message and reports missing channels", async () => {
     const telegram = {
-      joinedChannelIds: vi.fn(async () => [-1001234567890]),
-      sendToMe: vi.fn(async () => undefined),
+      joinedChannelIds: vi.fn(async () => [-1_001_234_567_890]),
+      sendToMe: vi.fn(async () => {}),
     };
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 
-    await announceStartup(telegram, [-1001234567890, -1009876543210]);
+    await announceStartup(telegram, [-1_001_234_567_890, -1_009_876_543_210]);
 
     expect(warn).toHaveBeenCalledWith("channel not joined: -1009876543210");
     expect(log).toHaveBeenCalledWith(
@@ -92,11 +92,11 @@ describe("announceStartup", () => {
 
   it("omits the not-joined line when every channel is joined", async () => {
     const telegram = {
-      joinedChannelIds: vi.fn(async () => [-1001234567890]),
-      sendToMe: vi.fn(async () => undefined),
+      joinedChannelIds: vi.fn(async () => [-1_001_234_567_890]),
+      sendToMe: vi.fn(async () => {}),
     };
 
-    await announceStartup(telegram, [-1001234567890]);
+    await announceStartup(telegram, [-1_001_234_567_890]);
 
     expect(telegram.sendToMe).toHaveBeenCalledWith("🟢 started, watching 1/1 channels");
   });

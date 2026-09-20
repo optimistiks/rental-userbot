@@ -4,24 +4,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
+import type { EvaluationFailure } from "./evaluator.js";
 import type { Post } from "./telegram.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
-import { createEvaluator, formatEvaluationError, type EvaluationFailure } from "./evaluator.js";
+import { createEvaluator, formatEvaluationError } from "./evaluator.js";
 import { createPostPipeline } from "./pipeline.js";
 
 const usage = {
-  inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
-  outputTokens: { total: 5, text: 5, reasoning: undefined },
+  inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
+  outputTokens: { reasoning: undefined, text: 5, total: 5 },
 };
 
 function post(id: number, text = "Flat for rent"): Post {
   return {
     chatId: -1001234567890,
-    messageIds: [id],
-    text,
-    photos: [],
     link: `https://t.me/example/${id}`,
+    messageIds: [id],
+    photos: [],
+    text,
   };
 }
 
@@ -31,18 +32,18 @@ function evaluatorFiles(): { promptPath: string; criteriaPath: string } {
   const criteriaPath = join(directory, "criteria.md");
   writeFileSync(promptPath, "Prompt");
   writeFileSync(criteriaPath, "Criteria");
-  return { promptPath, criteriaPath };
+  return { criteriaPath, promptPath };
 }
 
 function retryPolicy(timeoutMs = 100) {
-  return { attempts: 3, backoffsMs: [0, 0], timeoutMs, maxSteps: 8 };
+  return { attempts: 3, backoffsMs: [0, 0], maxSteps: 8, timeoutMs };
 }
 
 function successModel(notes = "Looks good") {
   return new MockLanguageModelV4({
     doGenerate: {
-      content: [{ type: "text", text: JSON.stringify({ match: true, notes }) }],
-      finishReason: { unified: "stop", raw: undefined },
+      content: [{ text: JSON.stringify({ match: true, notes }), type: "text" }],
+      finishReason: { raw: undefined, unified: "stop" },
       usage,
       warnings: [],
     },
@@ -54,7 +55,7 @@ describe("failure paths", () => {
     const timeout = new DOMException("timed out", "TimeoutError");
     expect(
       formatEvaluationError(
-        new Error("\u001b[31mfirst line\u001b[0m\nsecond line", { cause: timeout }),
+        new Error("\u001B[31mfirst line\u001B[0m\nsecond line", { cause: timeout }),
       ),
     ).toBe("timeout: first line");
 
@@ -69,7 +70,7 @@ describe("failure paths", () => {
         throw new Error("gateway failed");
       },
     });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       {
@@ -78,9 +79,9 @@ describe("failure paths", () => {
       },
     );
 
-    await expect(evaluator.evaluate({ ...post(1) })).resolves.toEqual({
-      kind: "evaluation-failure",
+    await expect(evaluator.evaluate({ ...post(1) })).resolves.toStrictEqual({
       error: "Error: gateway failed",
+      kind: "evaluation-failure",
     } satisfies EvaluationFailure);
     expect(model.doGenerateCalls).toHaveLength(3);
     expect(consoleError).toHaveBeenCalledTimes(3);
@@ -97,14 +98,14 @@ describe("failure paths", () => {
           throw new Error("temporary gateway failure");
         }
         return {
-          content: [{ type: "text", text: JSON.stringify({ match: true, notes: "Recovered" }) }],
-          finishReason: { unified: "stop", raw: undefined },
+          content: [{ text: JSON.stringify({ match: true, notes: "Recovered" }), type: "text" }],
+          finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
         };
       },
     });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       {
@@ -113,7 +114,7 @@ describe("failure paths", () => {
       },
     );
 
-    await expect(evaluator.evaluate({ ...post(2) })).resolves.toEqual({
+    await expect(evaluator.evaluate({ ...post(2) })).resolves.toStrictEqual({
       match: true,
       notes: "Recovered",
     });
@@ -131,27 +132,27 @@ describe("failure paths", () => {
           throw new Error("temporary gateway failure");
         }
         return {
-          content: [{ type: "text", text: JSON.stringify({ match: true, notes: "Recovered" }) }],
-          finishReason: { unified: "stop", raw: undefined },
+          content: [{ text: JSON.stringify({ match: true, notes: "Recovered" }), type: "text" }],
+          finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
         };
       },
     });
     const telegram = {
-      sendToMe: vi.fn<(text: string) => Promise<void>>(async () => undefined),
+      sendToMe: vi.fn<(text: string) => Promise<void>>(async () => {}),
     };
     const dedupeStore = openDedupeStore(":memory:");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator: createEvaluator(
         { modelId: "test/model", ...files },
         { model, retryPolicy: retryPolicy() },
       ),
       telegram,
-      dedupeStore,
     });
 
     await pipeline.process(post(25));
@@ -172,12 +173,12 @@ describe("failure paths", () => {
     const model = new MockLanguageModelV4({
       doGenerate: {
         content: [],
-        finishReason: { unified: "length", raw: undefined },
+        finishReason: { raw: undefined, unified: "length" },
         usage,
         warnings: [],
       },
     });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       {
@@ -197,21 +198,21 @@ describe("failure paths", () => {
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
       doGenerate: {
-        content: [{ type: "text", text: "not JSON" }],
-        finishReason: { unified: "stop", raw: undefined },
+        content: [{ text: "not JSON", type: "text" }],
+        finishReason: { raw: undefined, unified: "stop" },
         usage,
         warnings: [],
       },
     });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       { model, retryPolicy: retryPolicy() },
     );
 
     await expect(evaluator.evaluate({ ...post(30) })).resolves.toMatchObject({
-      kind: "evaluation-failure",
       error: expect.stringContaining("AI_NoObjectGeneratedError"),
+      kind: "evaluation-failure",
     });
     expect(model.doGenerateCalls).toHaveLength(3);
     consoleError.mockRestore();
@@ -232,10 +233,16 @@ describe("failure paths", () => {
             return;
           }
 
-          abortSignal.addEventListener("abort", () => reject(abortSignal.reason), { once: true });
+          abortSignal.addEventListener(
+            "abort",
+            () => {
+              reject(abortSignal.reason);
+            },
+            { once: true },
+          );
         }),
     });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       {
@@ -245,8 +252,8 @@ describe("failure paths", () => {
     );
 
     await expect(evaluator.evaluate({ ...post(31) })).resolves.toMatchObject({
+      error: expect.stringMatching(/^timeout:/u),
       kind: "evaluation-failure",
-      error: expect.stringMatching(/^timeout:/),
     });
     expect(model.doGenerateCalls).toHaveLength(3);
     consoleError.mockRestore();
@@ -255,12 +262,12 @@ describe("failure paths", () => {
   it("returns a prompt or Criteria read failure without an agent run or retry", async () => {
     const files = evaluatorFiles();
     const model = successModel();
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
     const evaluator = createEvaluator(
       {
+        criteriaPath: join(tmpdir(), "missing-criteria.md"),
         modelId: "test/model",
         promptPath: files.promptPath,
-        criteriaPath: join(tmpdir(), "missing-criteria.md"),
       },
       {
         model,
@@ -269,11 +276,11 @@ describe("failure paths", () => {
     );
 
     await expect(evaluator.evaluate({ ...post(4) })).resolves.toMatchObject({
-      kind: "evaluation-failure",
       error: expect.stringContaining("Criteria file"),
+      kind: "evaluation-failure",
     });
     expect(model.doGenerateCalls).toHaveLength(0);
-    expect(consoleError).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledTimes(1);
     consoleError.mockRestore();
   });
 
@@ -285,24 +292,24 @@ describe("failure paths", () => {
       },
     });
     const telegram = {
-      sendToMe: vi.fn<(text: string) => Promise<void>>(async () => undefined),
+      sendToMe: vi.fn<(text: string) => Promise<void>>(async () => {}),
     };
     const dedupeStore = openDedupeStore(":memory:");
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator: createEvaluator(
         { modelId: "test/model", ...files },
         { model, retryPolicy: retryPolicy() },
       ),
       telegram,
-      dedupeStore,
     });
 
     await pipeline.process(post(5));
 
-    expect(telegram.sendToMe).toHaveBeenCalledOnce();
+    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe).toHaveBeenCalledWith(
       "https://t.me/example/5\n⚠️ couldn't evaluate: Error: model unavailable",
     );
@@ -329,13 +336,13 @@ describe("failure paths", () => {
         }
       }),
     };
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator,
       telegram,
-      dedupeStore,
     });
 
     await Promise.all([pipeline.process(post(6)), pipeline.process(post(7))]);
@@ -357,22 +364,22 @@ describe("failure paths", () => {
   it("caps a Match notification at Telegram’s 4096-character limit", async () => {
     const dedupeStore = openDedupeStore(":memory:");
     const telegram = {
-      sendToMe: vi.fn<(text: string) => Promise<void>>(async () => undefined),
+      sendToMe: vi.fn<(text: string) => Promise<void>>(async () => {}),
     };
     const evaluator = {
       evaluate: vi.fn(async () => ({ match: true, notes: "x".repeat(5000) })),
     };
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
+      dedupeStore,
       evaluator,
       telegram,
-      dedupeStore,
     });
 
     await pipeline.process(post(8));
 
-    expect(telegram.sendToMe).toHaveBeenCalledOnce();
+    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe.mock.calls[0]?.[0]).toHaveLength(4096);
     log.mockRestore();
     dedupeStore.close();

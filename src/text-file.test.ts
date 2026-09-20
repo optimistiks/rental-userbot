@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { readCriteriaFile, readPromptFile } from "./text-file.js";
 
-describe("readCriteriaFile", () => {
+describe(readCriteriaFile, () => {
   it("reads the criteria text from the configured path", () => {
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const criteriaPath = join(directory, "criteria.md");
@@ -17,13 +17,13 @@ describe("readCriteriaFile", () => {
   it("names the Criteria file when it cannot be read", () => {
     const criteriaPath = join(tmpdir(), "missing-rental-criteria.md");
 
-    expect(() => readCriteriaFile(criteriaPath)).toThrowError(
-      new RegExp(`Criteria file .*${criteriaPath}`),
+    expect(() => readCriteriaFile(criteriaPath)).toThrow(
+      new RegExp(`Criteria file .*${criteriaPath}`, "u"),
     );
   });
 });
 
-describe("readPromptFile", () => {
+describe(readPromptFile, () => {
   it("reads the prompt text from the configured path", () => {
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
@@ -35,8 +35,8 @@ describe("readPromptFile", () => {
   it("names the Prompt file when it cannot be read", () => {
     const promptPath = join(tmpdir(), "missing-rental-prompt.md");
 
-    expect(() => readPromptFile(promptPath)).toThrowError(
-      new RegExp(`Prompt file .*${promptPath}`),
+    expect(() => readPromptFile(promptPath)).toThrow(
+      new RegExp(`Prompt file .*${promptPath}`, "u"),
     );
   });
 });

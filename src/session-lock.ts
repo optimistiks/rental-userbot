@@ -2,8 +2,8 @@ import Database from "better-sqlite3";
 
 import { SESSION_LOCK_PATH } from "./config.js";
 
-export interface SessionLock {
-  release(): void;
+interface SessionLock {
+  release: () => void;
 }
 
 /**
@@ -14,7 +14,7 @@ export interface SessionLock {
  * operating system drops it when the process dies. A crash never leaves a stale
  * lock behind.
  */
-export function acquireSessionLock(lockPath: string = SESSION_LOCK_PATH): SessionLock {
+function acquireSessionLock(lockPath: string = SESSION_LOCK_PATH): SessionLock {
   const database = new Database(lockPath);
 
   try {
@@ -42,3 +42,5 @@ export function acquireSessionLock(lockPath: string = SESSION_LOCK_PATH): Sessio
     },
   };
 }
+
+export { type SessionLock, acquireSessionLock };

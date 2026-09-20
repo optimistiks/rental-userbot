@@ -11,13 +11,13 @@ const SCHEMA = `
   )
 `;
 
-export interface DedupeStore {
-  isProcessed(postKey: string): boolean;
-  markProcessed(postKey: string): void;
-  close(): void;
+interface DedupeStore {
+  isProcessed: (postKey: string) => boolean;
+  markProcessed: (postKey: string) => void;
+  close: () => void;
 }
 
-export function postKey(post: Pick<Post, "chatId" | "messageIds" | "albumId">): string {
+function postKey(post: Pick<Post, "chatId" | "messageIds" | "albumId">): string {
   if (post.albumId !== undefined) {
     return `${post.chatId}:album:${post.albumId}`;
   }
@@ -25,7 +25,7 @@ export function postKey(post: Pick<Post, "chatId" | "messageIds" | "albumId">): 
   return `${post.chatId}:${post.messageIds[0]}`;
 }
 
-export function openDedupeStore(databasePath: string = BOT_DATABASE_PATH): DedupeStore {
+function openDedupeStore(databasePath: string = BOT_DATABASE_PATH): DedupeStore {
   const database = new Database(databasePath);
   database.exec(SCHEMA);
 
@@ -35,14 +35,16 @@ export function openDedupeStore(databasePath: string = BOT_DATABASE_PATH): Dedup
   );
 
   return {
+    close() {
+      database.close();
+    },
     isProcessed(postKey) {
       return findPost.get(postKey) !== undefined;
     },
     markProcessed(postKey) {
       insertPost.run(postKey, Date.now());
     },
-    close() {
-      database.close();
-    },
   };
 }
+
+export { type DedupeStore, postKey, openDedupeStore };

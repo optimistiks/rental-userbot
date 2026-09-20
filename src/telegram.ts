@@ -1,11 +1,13 @@
 import type { FileDownloadLocation, Message } from "@mtcute/node";
 
-import { networkMiddlewares, TelegramClient } from "@mtcute/node";
+import { TelegramClient, networkMiddlewares } from "@mtcute/node";
 
-import { MAX_PHOTOS, type LoginSettings, type Settings } from "./config.js";
+import type { LoginSettings, Settings } from "./config.js";
 
-export const SESSION_PATH = "data/session.sqlite";
-export const MESSAGE_GROUPING_INTERVAL = 1000;
+import { MAX_PHOTOS } from "./config.js";
+
+const SESSION_PATH = "data/session.sqlite";
+const MESSAGE_GROUPING_INTERVAL = 1000;
 
 /**
  * Telegram answers a flood wait with "back off for N seconds". mtcute sleeps
@@ -13,21 +15,21 @@ export const MESSAGE_GROUPING_INTERVAL = 1000;
  * then die mid-flood. Sleeping through waits up to 5 minutes obeys Telegram
  * instead of arguing with it.
  */
-export const MAX_FLOOD_WAIT_MS = 300_000;
-export const MAX_FLOOD_RETRIES = 3;
+const MAX_FLOOD_WAIT_MS = 300_000;
+const MAX_FLOOD_RETRIES = 3;
 
 /** Pinned so an mtcute upgrade doesn't silently change how this session is listed under Telegram's Devices. */
-export const DEVICE_INFO = {
+const DEVICE_INFO = {
+  appVersion: "0.1.0",
   deviceModel: "rental-userbot",
   systemVersion: "docker",
-  appVersion: "0.1.0",
 } as const;
 
-export interface PhotoRef {
+interface PhotoRef {
   readonly __photoRef: true;
 }
 
-export interface Post {
+interface Post {
   chatId: number;
   messageIds: number[];
   albumId?: string;
@@ -36,11 +38,11 @@ export interface Post {
   link: string;
 }
 
-export interface Telegram {
-  onPost(handler: (post: Post) => void): void;
-  downloadPhoto(ref: PhotoRef): Promise<Uint8Array>;
-  sendToMe(text: string): Promise<void>;
-  joinedChannelIds(): Promise<number[]>;
+interface Telegram {
+  onPost: (handler: (post: Post) => void) => void;
+  downloadPhoto: (ref: PhotoRef) => Promise<Uint8Array>;
+  sendToMe: (text: string) => Promise<void>;
+  joinedChannelIds: () => Promise<number[]>;
 }
 
 interface DialogPeer {
@@ -55,32 +57,32 @@ interface DialogLike {
 }
 
 interface MessageEmitter<T> {
-  add(listener: (value: T) => void): void;
+  add: (listener: (value: T) => void) => void;
 }
 
-export interface TelegramClientLike {
+interface TelegramClientLike {
   onNewMessage: MessageEmitter<Message>;
   onMessageGroup: MessageEmitter<Message[]>;
-  sendText(chatId: "me", text: string, params: { disableWebPreview: true }): Promise<unknown>;
-  iterDialogs(params: { archived: "keep" }): AsyncIterable<DialogLike>;
-  downloadAsBuffer(location: FileDownloadLocation): Promise<Uint8Array>;
+  sendText: (chatId: "me", text: string, params: { disableWebPreview: true }) => Promise<unknown>;
+  iterDialogs: (params: { archived: "keep" }) => AsyncIterable<DialogLike>;
+  downloadAsBuffer: (location: FileDownloadLocation) => Promise<Uint8Array>;
 }
 
 type TelegramClientOptions = ConstructorParameters<typeof TelegramClient>[0];
 
-export function telegramClientOptions(
+function telegramClientOptions(
   settings: Pick<LoginSettings, "apiId" | "apiHash">,
 ): TelegramClientOptions {
   return {
-    apiId: settings.apiId,
     apiHash: settings.apiHash,
-    storage: SESSION_PATH,
+    apiId: settings.apiId,
     initConnectionOptions: DEVICE_INFO,
     network: {
       middlewares: networkMiddlewares.basic({
         floodWaiter: { maxWait: MAX_FLOOD_WAIT_MS, maxRetries: MAX_FLOOD_RETRIES },
       }),
     },
+    storage: SESSION_PATH,
     updates: {
       catchUp: false,
       messageGroupingInterval: MESSAGE_GROUPING_INTERVAL,
@@ -88,34 +90,32 @@ export function telegramClientOptions(
   };
 }
 
-export function createTelegramClient(
-  settings: Pick<Settings, "apiId" | "apiHash">,
-): TelegramClient {
+function createTelegramClient(settings: Pick<Settings, "apiId" | "apiHash">): TelegramClient {
   return new TelegramClient(telegramClientOptions(settings));
 }
 
-export const daemonStartParams = {
-  phone: async (): Promise<string> => {
-    throw new Error("run login first");
-  },
+const daemonStartParams = {
   code: async (): Promise<string> => {
     throw new Error("run login first");
   },
   password: async (): Promise<string> => {
     throw new Error("run login first");
   },
+  phone: async (): Promise<string> => {
+    throw new Error("run login first");
+  },
 };
 
-export type SessionClient = {
-  start(params?: typeof daemonStartParams): Promise<unknown>;
-};
+interface SessionClient {
+  start: (params?: typeof daemonStartParams) => Promise<unknown>;
+}
 
-export async function startDaemonSession(client: SessionClient): Promise<void> {
+async function startDaemonSession(client: SessionClient): Promise<void> {
   await client.start(daemonStartParams);
 }
 
-export function createTelegramAdapter(client: TelegramClientLike): Telegram {
-  const postHandlers: Array<(post: Post) => void> = [];
+function createTelegramAdapter(client: TelegramClientLike): Telegram {
+  const postHandlers: ((post: Post) => void)[] = [];
   const photoLocations = new WeakMap<object, FileDownloadLocation>();
   let postStreamStarted = false;
 
@@ -125,8 +125,12 @@ export function createTelegramAdapter(client: TelegramClientLike): Telegram {
     }
 
     postStreamStarted = true;
-    client.onNewMessage.add((message) => emitPost([message]));
-    client.onMessageGroup.add((messages) => emitPost(messages));
+    client.onNewMessage.add((message) => {
+      emitPost([message]);
+    });
+    client.onMessageGroup.add((messages) => {
+      emitPost(messages);
+    });
   }
 
   function emitPost(messages: readonly Message[]): void {
@@ -142,13 +146,13 @@ export function createTelegramAdapter(client: TelegramClientLike): Telegram {
     const albumId = firstMessage.groupedIdUnique;
     const post: Post = {
       chatId: firstMessage.chat.id,
+      link: firstMessage.link,
       messageIds: postMessages.map((message) => message.id),
+      photos: postMessages.flatMap((message) => photoRefFor(message)).slice(0, MAX_PHOTOS),
       text: postMessages
         .map((message) => message.text)
         .filter((text) => text !== "")
         .join("\n\n"),
-      photos: postMessages.flatMap((message) => photoRefFor(message)).slice(0, MAX_PHOTOS),
-      link: firstMessage.link,
       ...(albumId == null ? {} : { albumId }),
     };
 
@@ -158,7 +162,7 @@ export function createTelegramAdapter(client: TelegramClientLike): Telegram {
   }
 
   function photoRefFor(message: Message): PhotoRef[] {
-    const media = message.media;
+    const { media } = message;
     if (media?.type !== "photo") {
       return [];
     }
@@ -170,19 +174,12 @@ export function createTelegramAdapter(client: TelegramClientLike): Telegram {
   }
 
   return {
-    onPost(handler) {
-      postHandlers.push(handler);
-      startPostStream();
-    },
     async downloadPhoto(ref) {
       const location = photoLocations.get(ref);
       if (location === undefined) {
         throw new Error("Unknown Telegram photo reference");
       }
       return client.downloadAsBuffer(location);
-    },
-    async sendToMe(text) {
-      await client.sendText("me", text, { disableWebPreview: true });
     },
     async joinedChannelIds() {
       const channelIds: number[] = [];
@@ -200,9 +197,34 @@ export function createTelegramAdapter(client: TelegramClientLike): Telegram {
 
       return channelIds;
     },
+    onPost(handler) {
+      postHandlers.push(handler);
+      startPostStream();
+    },
+    async sendToMe(text) {
+      await client.sendText("me", text, { disableWebPreview: true });
+    },
   };
 }
 
 function isChannel(peer: DialogPeer): boolean {
   return peer.type === "channel" || peer.chatType === "channel" || peer.chatType === "gigagroup";
 }
+
+export {
+  SESSION_PATH,
+  MESSAGE_GROUPING_INTERVAL,
+  MAX_FLOOD_WAIT_MS,
+  MAX_FLOOD_RETRIES,
+  DEVICE_INFO,
+  type PhotoRef,
+  type Post,
+  type Telegram,
+  type TelegramClientLike,
+  telegramClientOptions,
+  createTelegramClient,
+  daemonStartParams,
+  type SessionClient,
+  startDaemonSession,
+  createTelegramAdapter,
+};

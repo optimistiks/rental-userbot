@@ -1,15 +1,15 @@
 type ProcessEnv = NodeJS.ProcessEnv;
 
-export const MODEL_ID = "google/gemini-3.8-flash";
-export const GEOCODER_URL = "https://eu1.locationiq.com/v1/search";
-export const CRITERIA_PATH = "data/criteria.md";
-export const PROMPT_PATH = "data/prompt.md";
-export const ZONE_PATH = "data/zone.geojson";
-export const BOT_DATABASE_PATH = "data/bot.sqlite";
-export const MAX_PHOTOS = 6;
-export const SESSION_LOCK_PATH = "data/session.lock";
+const MODEL_ID = "google/gemini-3.8-flash";
+const GEOCODER_URL = "https://eu1.locationiq.com/v1/search";
+const CRITERIA_PATH = "data/criteria.md";
+const PROMPT_PATH = "data/prompt.md";
+const ZONE_PATH = "data/zone.geojson";
+const BOT_DATABASE_PATH = "data/bot.sqlite";
+const MAX_PHOTOS = 6;
+const SESSION_LOCK_PATH = "data/session.lock";
 
-export interface Settings {
+interface Settings {
   apiId: number;
   apiHash: string;
   channelIds: number[];
@@ -23,12 +23,12 @@ export interface Settings {
   sentryDsn?: string;
 }
 
-export interface LoginSettings {
+interface LoginSettings {
   apiId: number;
   apiHash: string;
 }
 
-export class SettingsError extends Error {
+class SettingsError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SettingsError";
@@ -44,7 +44,7 @@ function required(env: ProcessEnv, name: string): string {
 }
 
 function positiveInteger(value: string, name: string): number {
-  if (!/^\d+$/.test(value)) {
+  if (!/^\d+$/u.test(value)) {
     throw new SettingsError(`${name} must be a positive integer`);
   }
 
@@ -57,7 +57,7 @@ function positiveInteger(value: string, name: string): number {
 
 function channelIds(value: string): number[] {
   const ids = value.split(",").map((part) => part.trim());
-  if (ids.some((id) => !/^-100\d+$/.test(id))) {
+  if (ids.some((id) => !/^-100\d+$/u.test(id))) {
     throw new SettingsError("CHANNEL_IDS must be comma-separated marked channel IDs");
   }
 
@@ -77,27 +77,43 @@ function optionalValue(env: ProcessEnv, name: string): string | undefined {
   return value || undefined;
 }
 
-export function readSettings(env: ProcessEnv = process.env): Settings {
+function readSettings(env: ProcessEnv = process.env): Settings {
   const loginSettings = readLoginSettings(env);
   const sentryDsn = optionalValue(env, "SENTRY_DSN");
 
   return {
     ...loginSettings,
-    channelIds: channelIds(required(env, "CHANNEL_IDS")),
     aiGatewayApiKey: required(env, "AI_GATEWAY_API_KEY"),
-    modelId: optional(env, "MODEL_ID", MODEL_ID),
-    locationIqToken: required(env, "LOCATIONIQ_TOKEN"),
-    geocoderUrl: optional(env, "GEOCODER_URL", GEOCODER_URL),
+    channelIds: channelIds(required(env, "CHANNEL_IDS")),
     criteriaPath: optional(env, "CRITERIA_PATH", CRITERIA_PATH),
+    geocoderUrl: optional(env, "GEOCODER_URL", GEOCODER_URL),
+    locationIqToken: required(env, "LOCATIONIQ_TOKEN"),
+    modelId: optional(env, "MODEL_ID", MODEL_ID),
     promptPath: optional(env, "PROMPT_PATH", PROMPT_PATH),
     zonePath: optional(env, "ZONE_PATH", ZONE_PATH),
     ...(sentryDsn === undefined ? {} : { sentryDsn }),
   };
 }
 
-export function readLoginSettings(env: ProcessEnv = process.env): LoginSettings {
+function readLoginSettings(env: ProcessEnv = process.env): LoginSettings {
   return {
-    apiId: positiveInteger(required(env, "API_ID"), "API_ID"),
     apiHash: required(env, "API_HASH"),
+    apiId: positiveInteger(required(env, "API_ID"), "API_ID"),
   };
 }
+
+export {
+  MODEL_ID,
+  GEOCODER_URL,
+  CRITERIA_PATH,
+  PROMPT_PATH,
+  ZONE_PATH,
+  BOT_DATABASE_PATH,
+  MAX_PHOTOS,
+  SESSION_LOCK_PATH,
+  type Settings,
+  type LoginSettings,
+  SettingsError,
+  readSettings,
+  readLoginSettings,
+};

@@ -5,39 +5,39 @@ import {
   GEOCODER_URL,
   MODEL_ID,
   PROMPT_PATH,
+  ZONE_PATH,
   readLoginSettings,
   readSettings,
-  ZONE_PATH,
 } from "./config.js";
 
 const validEnvironment = {
-  API_ID: "123456",
-  API_HASH: "hash",
-  CHANNEL_IDS: "-1001234567890, -1009876543210",
   AI_GATEWAY_API_KEY: "gateway-key",
+  API_HASH: "hash",
+  API_ID: "123456",
+  CHANNEL_IDS: "-1001234567890, -1009876543210",
   LOCATIONIQ_TOKEN: "locationiq-token",
 };
 
-describe("readSettings", () => {
+describe(readSettings, () => {
   it("reads only the API settings needed by login", () => {
     expect(
       readLoginSettings({
-        API_ID: "123456",
         API_HASH: "hash",
+        API_ID: "123456",
       }),
-    ).toEqual({ apiId: 123456, apiHash: "hash" });
+    ).toStrictEqual({ apiHash: "hash", apiId: 123456 });
   });
 
   it("reads required settings, parses marked channel IDs, and applies defaults", () => {
-    expect(readSettings(validEnvironment)).toEqual({
-      apiId: 123456,
-      apiHash: "hash",
-      channelIds: [-1001234567890, -1009876543210],
+    expect(readSettings(validEnvironment)).toStrictEqual({
       aiGatewayApiKey: "gateway-key",
-      modelId: MODEL_ID,
-      locationIqToken: "locationiq-token",
-      geocoderUrl: GEOCODER_URL,
+      apiHash: "hash",
+      apiId: 123456,
+      channelIds: [-1001234567890, -1009876543210],
       criteriaPath: CRITERIA_PATH,
+      geocoderUrl: GEOCODER_URL,
+      locationIqToken: "locationiq-token",
+      modelId: MODEL_ID,
       promptPath: PROMPT_PATH,
       zonePath: ZONE_PATH,
     });
@@ -47,16 +47,16 @@ describe("readSettings", () => {
     expect(
       readSettings({
         ...validEnvironment,
-        MODEL_ID: "test/model",
-        GEOCODER_URL: "http://localhost:1234/search",
         CRITERIA_PATH: "/tmp/criteria.md",
+        GEOCODER_URL: "http://localhost:1234/search",
+        MODEL_ID: "test/model",
         PROMPT_PATH: "/tmp/prompt.md",
         ZONE_PATH: "/tmp/zone.geojson",
       }),
     ).toMatchObject({
-      modelId: "test/model",
-      geocoderUrl: "http://localhost:1234/search",
       criteriaPath: "/tmp/criteria.md",
+      geocoderUrl: "http://localhost:1234/search",
+      modelId: "test/model",
       promptPath: "/tmp/prompt.md",
       zonePath: "/tmp/zone.geojson",
     });
@@ -75,19 +75,19 @@ describe("readSettings", () => {
       const environment = { ...validEnvironment };
       delete environment[name as keyof typeof environment];
 
-      expect(() => readSettings(environment)).toThrowError(new RegExp(`${name} is required`));
+      expect(() => readSettings(environment)).toThrow(new RegExp(`${name} is required`, "u"));
     },
   );
 
   it("rejects malformed API_ID", () => {
-    expect(() => readSettings({ ...validEnvironment, API_ID: "not-a-number" })).toThrowError(
-      new RegExp("API_ID"),
+    expect(() => readSettings({ ...validEnvironment, API_ID: "not-a-number" })).toThrow(
+      new RegExp("API_ID", "u"),
     );
   });
 
   it("rejects unmarked channel IDs", () => {
-    expect(() => readSettings({ ...validEnvironment, CHANNEL_IDS: "12345" })).toThrowError(
-      new RegExp("CHANNEL_IDS"),
+    expect(() => readSettings({ ...validEnvironment, CHANNEL_IDS: "12345" })).toThrow(
+      new RegExp("CHANNEL_IDS", "u"),
     );
   });
 });

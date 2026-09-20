@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { errorMessage } from "./errors.js";
 
-export function readConfiguredTextFile(path: string, label: string): string {
+function readConfiguredTextFile(path: string, label: string): string {
   try {
     return readFileSync(path, "utf8");
   } catch (error) {
@@ -12,10 +12,12 @@ export function readConfiguredTextFile(path: string, label: string): string {
   }
 }
 
-export function readCriteriaFile(criteriaPath: string): string {
+function readCriteriaFile(criteriaPath: string): string {
   return readConfiguredTextFile(criteriaPath, "Criteria");
 }
 
-export function readPromptFile(promptPath: string): string {
+function readPromptFile(promptPath: string): string {
   return readConfiguredTextFile(promptPath, "Prompt");
 }
+
+export { readConfiguredTextFile, readCriteriaFile, readPromptFile };

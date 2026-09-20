@@ -1,20 +1,18 @@
+import type { DedupeStore } from "./dedupe-store.js";
+import type { EvaluationFailure, Evaluator, Verdict } from "./evaluator.js";
+import type { ErrorReporter } from "./sentry.js";
 import type { Post, Telegram } from "./telegram.js";
 
 import { isWatchedPost } from "./channel-filter.js";
-import { postKey, type DedupeStore } from "./dedupe-store.js";
-import {
-  evaluationFailure,
-  type EvaluationFailure,
-  type Evaluator,
-  type Verdict,
-} from "./evaluator.js";
-import { createSentryReporter, type ErrorReporter } from "./sentry.js";
+import { postKey } from "./dedupe-store.js";
+import { evaluationFailure } from "./evaluator.js";
+import { createSentryReporter } from "./sentry.js";
 
-export interface PostPipeline {
-  process(post: Post): Promise<void>;
+interface PostPipeline {
+  process: (post: Post) => Promise<void>;
 }
 
-export interface PostPipelineOptions {
+interface PostPipelineOptions {
   channelIds: readonly number[];
   evaluator: Evaluator;
   telegram: Pick<Telegram, "sendToMe">;
@@ -22,11 +20,11 @@ export interface PostPipelineOptions {
   errorReporter?: ErrorReporter;
 }
 
-export const MAX_TELEGRAM_MESSAGE_LENGTH = 4096;
+const MAX_TELEGRAM_MESSAGE_LENGTH = 4096;
 
-export function createPostPipeline(options: PostPipelineOptions): PostPipeline {
+function createPostPipeline(options: PostPipelineOptions): PostPipeline {
   let queueTail = Promise.resolve();
-  const errorReporter = options.errorReporter ?? createSentryReporter(undefined);
+  const errorReporter = options.errorReporter ?? createSentryReporter();
 
   return {
     process(post) {
@@ -47,7 +45,7 @@ export function createPostPipeline(options: PostPipelineOptions): PostPipeline {
       const queued = queueTail.then(() =>
         processQueuedPost(post, processedPostKey, options, errorReporter),
       );
-      queueTail = queued.catch(() => undefined);
+      queueTail = queued.catch(() => {});
       return queued;
     },
   };
@@ -64,13 +62,13 @@ async function processQueuedPost(
   }
 
   // The Evaluator turns its own failures into a Verdict; an unexpected throw must
-  // still reach the Notifier and be marked processed, so nothing is silently lost.
+  // Still reach the Notifier and be marked processed, so nothing is silently lost.
   let verdict: Verdict;
   try {
     verdict = await options.evaluator.evaluate(post);
   } catch (error) {
     console.error(`post ${post.link}: evaluation threw`, error);
-    errorReporter.captureException(error, { postLink: post.link, phase: "evaluation" });
+    errorReporter.captureException(error, { phase: "evaluation", postLink: post.link });
     verdict = evaluationFailure(error);
   }
 
@@ -81,7 +79,7 @@ async function processQueuedPost(
     }
   } catch (error) {
     console.error(`post ${post.link}: failed to send notification`, error);
-    errorReporter.captureException(error, { postLink: post.link, phase: "notification" });
+    errorReporter.captureException(error, { phase: "notification", postLink: post.link });
   } finally {
     options.dedupeStore.markProcessed(processedPostKey);
   }
@@ -114,3 +112,10 @@ function isEvaluationFailure(verdict: Verdict): verdict is EvaluationFailure {
 function truncateTelegramMessage(message: string): string {
   return message.slice(0, MAX_TELEGRAM_MESSAGE_LENGTH);
 }
+
+export {
+  type PostPipeline,
+  type PostPipelineOptions,
+  MAX_TELEGRAM_MESSAGE_LENGTH,
+  createPostPipeline,
+};

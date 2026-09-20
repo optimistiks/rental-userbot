@@ -15,14 +15,17 @@
     "maxWarnings": 0
   },
   "rules": {
-    "sort-imports": ["error", { "ignoreDeclarationSort": true }],
+    "sort-imports": [
+      "error",
+      {
+        "ignoreDeclarationSort": true
+      }
+    ],
     "require-await": "off",
     "no-duplicate-imports": "off",
-
     "import/no-named-export": "off",
     "import/prefer-default-export": "off",
     "import/no-default-export": "error",
-
     "no-console": "off",
     "node/no-sync": "off",
     "node/no-process-env": "off",
@@ -33,7 +36,6 @@
     "vitest/no-importing-vitest-globals": "off",
     "vitest/no-hooks": "off",
     "vitest/require-hook": "off",
-
     "one-var": "off",
     "no-magic-numbers": "off",
     "no-undefined": "off",
@@ -53,16 +55,43 @@
     "oxc/no-rest-spread-properties": "off",
     "typescript/prefer-readonly-parameter-types": "off",
     "typescript/promise-function-async": "off",
-
-    "complexity": ["error", { "max": 10, "variant": "modified" }],
-    "max-depth": ["error", { "max": 4 }],
-    "max-nested-callbacks": ["error", { "max": 4 }],
-
+    "complexity": [
+      "error",
+      {
+        "max": 10,
+        "variant": "modified"
+      }
+    ],
+    "max-depth": [
+      "error",
+      {
+        "max": 4
+      }
+    ],
+    "max-nested-callbacks": [
+      "error",
+      {
+        "max": 4
+      }
+    ],
     "no-use-before-define": "off",
-
     "vitest/prefer-to-be-falsy": "off",
     "vitest/prefer-to-be-truthy": "off",
-    "vitest/max-nested-describe": ["error", { "max": 2 }]
+    "vitest/max-nested-describe": [
+      "error",
+      {
+        "max": 2
+      }
+    ]
   },
-  "ignorePatterns": ["node_modules", "dist", "data"]
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "data",
+    "data.example",
+    ".agents",
+    ".claude",
+    ".scratch",
+    "docs"
+  ]
 }

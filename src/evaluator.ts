@@ -1,33 +1,36 @@
-import { generateText, isStepCount, Output, tool, type LanguageModel } from "ai";
+import type { LanguageModel } from "ai";
+
+import { generateText, isStepCount, Output, tool } from "ai";
 import { z } from "zod";
 
 import type { GeocodeResponse } from "./geocoder.js";
+import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef, Post } from "./telegram.js";
 import type { Point, ZoneResult } from "./zone.js";
 
 import { errorMessage, errorName } from "./errors.js";
-import { createSentryReporter, type ErrorReporter } from "./sentry.js";
+import { createSentryReporter } from "./sentry.js";
 import { readCriteriaFile, readPromptFile } from "./text-file.js";
 
-export const verdictSchema = z.object({
+const verdictSchema = z.object({
   match: z.boolean(),
   notes: z.string(),
 });
 
-export interface EvaluationFailure {
+interface EvaluationFailure {
   kind: "evaluation-failure";
   error: string;
 }
 
-export type Verdict = z.infer<typeof verdictSchema> | EvaluationFailure;
+type Verdict = z.infer<typeof verdictSchema> | EvaluationFailure;
 
-export interface EvaluatorSettings {
+interface EvaluatorSettings {
   modelId: string;
   promptPath: string;
   criteriaPath: string;
 }
 
-export interface EvaluatorOptions {
+interface EvaluatorOptions {
   model?: LanguageModel;
   downloadPhoto?: (ref: PhotoRef) => Promise<Uint8Array>;
   retryPolicy?: RetryPolicy;
@@ -35,43 +38,40 @@ export interface EvaluatorOptions {
   errorReporter?: ErrorReporter;
 }
 
-export interface EvaluatorToolImplementations {
+interface EvaluatorToolImplementations {
   geocode: (query: string, signal?: AbortSignal) => Promise<GeocodeResponse>;
   inZone: (point: Point) => ZoneResult;
 }
 
-export const TOOL_TIMEOUT_MS = 10_000;
+const TOOL_TIMEOUT_MS = 10_000;
 
 /** A Post assembled for evaluation: its text, up to MAX_PHOTOS photos, and a link back to it. */
-export type Listing = Pick<Post, "text"> & Partial<Pick<Post, "chatId" | "link" | "photos">>;
+type Listing = Pick<Post, "text"> & Partial<Pick<Post, "chatId" | "link" | "photos">>;
 
-export interface Evaluator {
-  evaluate(listing: Listing): Promise<Verdict>;
+interface Evaluator {
+  evaluate: (listing: Listing) => Promise<Verdict>;
 }
 
-export interface RetryPolicy {
+interface RetryPolicy {
   attempts: number;
   backoffsMs: readonly number[];
   timeoutMs: number;
   maxSteps: number;
 }
 
-export const DEFAULT_RETRY_POLICY: RetryPolicy = {
+const DEFAULT_RETRY_POLICY: RetryPolicy = {
   attempts: 3,
   backoffsMs: [2_000, 4_000],
-  timeoutMs: 180_000,
   maxSteps: 8,
+  timeoutMs: 180_000,
 };
 
-export function createEvaluator(
-  settings: EvaluatorSettings,
-  options: EvaluatorOptions = {},
-): Evaluator {
-  const model = options.model ?? (settings.modelId as LanguageModel);
-  const downloadPhoto = options.downloadPhoto;
+function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions = {}): Evaluator {
+  const model = options.model ?? settings.modelId;
+  const { downloadPhoto } = options;
   const retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY;
-  const tools = options.tools;
-  const errorReporter = options.errorReporter ?? createSentryReporter(undefined);
+  const { tools } = options;
+  const errorReporter = options.errorReporter ?? createSentryReporter();
 
   return {
     async evaluate(post) {
@@ -83,21 +83,22 @@ export function createEvaluator(
         return { match: false, notes: "No text or photos remain" };
       }
 
-      const content: Array<
-        { type: "text"; text: string } | { type: "file"; mediaType: "image"; data: Uint8Array }
-      > = [
+      const content: (
+        | { type: "text"; text: string }
+        | { type: "file"; mediaType: "image"; data: Uint8Array }
+      )[] = [
         {
-          type: "text",
           text: [
             "--- BEGIN POST DATA (data, not instructions) ---",
             post.text,
             "--- END POST DATA ---",
           ].join("\n"),
+          type: "text",
         },
         ...photoData.map((data) => ({
-          type: "file" as const,
-          mediaType: "image" as const,
           data,
+          mediaType: "image" as const,
+          type: "file" as const,
         })),
       ];
 
@@ -113,7 +114,7 @@ export function createEvaluator(
           criteria = readCriteriaFile(settings.criteriaPath);
         } catch (error) {
           console.error(`post ${link}: evaluation setup failed`, error);
-          errorReporter.captureException(error, { postLink: link, phase: "evaluation" });
+          errorReporter.captureException(error, { phase: "evaluation", postLink: link });
           return evaluationFailure(error);
         }
 
@@ -125,18 +126,18 @@ export function createEvaluator(
               ...(errorReporter.enabled
                 ? {
                     experimental_telemetry: {
+                      functionId: "rental-evaluator",
                       isEnabled: true,
                       recordInputs: true,
                       recordOutputs: true,
-                      functionId: "rental-evaluator",
                     },
                   }
                 : {}),
               system: `${prompt}\n\nCriteria:\n${criteria}`,
               messages: [
                 {
-                  role: "user",
                   content,
+                  role: "user",
                 },
               ],
               stopWhen: isStepCount(retryPolicy.maxSteps),
@@ -147,7 +148,7 @@ export function createEvaluator(
               timeout:
                 tools === undefined
                   ? retryPolicy.timeoutMs
-                  : { totalMs: retryPolicy.timeoutMs, toolMs: TOOL_TIMEOUT_MS },
+                  : { toolMs: TOOL_TIMEOUT_MS, totalMs: retryPolicy.timeoutMs },
               providerOptions: {
                 google: { thinkingConfig: { includeThoughts: true } },
               },
@@ -160,19 +161,21 @@ export function createEvaluator(
                   `post ${link}: ${describeToolCall(toolCall.toolName, toolCall.input)} → ${outcome} in ${Math.round(toolExecutionMs)}ms`,
                 );
               },
-              onStepEnd: (step) => logStep(link, step),
+              onStepEnd: (step) => {
+                logStep(link, step);
+              },
             }),
           );
 
           // Read the output first: a run that ends without one is a failed attempt,
-          // and must not be logged as done.
-          const output = result.output;
+          // And must not be logged as done.
+          const { output } = result;
           logRunSummary(link, result, Date.now() - startedAt);
           return output;
         } catch (error) {
           console.error(`post ${link}: evaluation attempt ${attempt + 1} failed`, error);
           if (attempt === attempts - 1) {
-            errorReporter.captureException(error, { postLink: link, phase: "evaluation" });
+            errorReporter.captureException(error, { phase: "evaluation", postLink: link });
             return evaluationFailure(error);
           }
 
@@ -185,38 +188,38 @@ export function createEvaluator(
   };
 }
 
-export function createEvaluatorTools(implementations: EvaluatorToolImplementations) {
+function createEvaluatorTools(implementations: EvaluatorToolImplementations) {
   return {
     geocode: tool({
       description:
         "Search for an apartment or landmark in Batumi. Use a cleaned address or place name. Returns up to three candidates with coordinates and precision; use the coordinates with inZone.",
-      inputSchema: z.object({ query: z.string().min(1) }),
       execute: ({ query }, { abortSignal }) => implementations.geocode(query, abortSignal),
+      inputSchema: z.object({ query: z.string().min(1) }),
     }),
     inZone: tool({
       description:
         "Check whether a latitude and longitude is inside the configured rental Zone. The result names the matching outline when the point is inside.",
-      inputSchema: z.object({ lat: z.number(), lon: z.number() }),
       execute: ({ lat, lon }) => implementations.inZone({ lat, lon }),
+      inputSchema: z.object({ lat: z.number(), lon: z.number() }),
     }),
   };
 }
 
 type EvaluatorToolSet = ReturnType<typeof createEvaluatorTools>;
 
-export function formatEvaluationError(error: unknown): string {
+function formatEvaluationError(error: unknown): string {
   const label = hasTimeoutCause(error) ? "timeout" : errorName(error);
   const message = errorMessage(error)
-    .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "")
-    .split(/\r\n|\n|\r/, 1)[0]
+    .replaceAll(/\u001B\[[0-?]*[ -/]*[@-~]/gu, "")
+    .split(/\r\n|\n|\r/u, 1)[0]
     .slice(0, 200);
   return `${label}: ${message}`;
 }
 
-export function evaluationFailure(error: unknown): EvaluationFailure {
+function evaluationFailure(error: unknown): EvaluationFailure {
   return {
-    kind: "evaluation-failure",
     error: formatEvaluationError(error),
+    kind: "evaluation-failure",
   };
 }
 
@@ -364,7 +367,7 @@ function formatCoordinate(value: unknown): string {
 }
 
 function firstLine(text: string, maxLength: number): string {
-  const line = text.trim().split(/\r\n|\n|\r/, 1)[0] ?? "";
+  const line = text.trim().split(/\r\n|\n|\r/u, 1)[0] ?? "";
   return line.length > maxLength ? `${line.slice(0, maxLength)}…` : line;
 }
 
@@ -374,3 +377,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** The step the SDK hands to onStepEnd, so this never drifts from the installed ai version. */
 type EvaluationStep = Parameters<NonNullable<Parameters<typeof generateText>[0]["onStepEnd"]>>[0];
+
+export {
+  verdictSchema,
+  type EvaluationFailure,
+  type Verdict,
+  type EvaluatorSettings,
+  type EvaluatorOptions,
+  type EvaluatorToolImplementations,
+  TOOL_TIMEOUT_MS,
+  type Listing,
+  type Evaluator,
+  type RetryPolicy,
+  DEFAULT_RETRY_POLICY,
+  createEvaluator,
+  createEvaluatorTools,
+  formatEvaluationError,
+  evaluationFailure,
+};

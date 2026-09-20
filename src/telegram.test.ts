@@ -3,26 +3,26 @@ import { describe, expect, it, vi } from "vitest";
 import type { Settings } from "./config.js";
 
 import {
-  daemonStartParams,
-  createTelegramAdapter,
-  telegramClientOptions,
   DEVICE_INFO,
   MAX_FLOOD_WAIT_MS,
+  createTelegramAdapter,
+  daemonStartParams,
   startDaemonSession,
+  telegramClientOptions,
 } from "./telegram.js";
 
 const settings = {
-  apiId: 123456,
   apiHash: "hash",
+  apiId: 123456,
 } satisfies Pick<Settings, "apiId" | "apiHash">;
 
 describe("telegram client setup", () => {
   it("uses the persistent session and the specified update settings", () => {
     expect(telegramClientOptions(settings)).toMatchObject({
-      apiId: 123456,
       apiHash: "hash",
-      storage: "data/session.sqlite",
+      apiId: 123456,
       initConnectionOptions: DEVICE_INFO,
+      storage: "data/session.sqlite",
       updates: {
         catchUp: false,
         messageGroupingInterval: 1000,
@@ -38,8 +38,8 @@ describe("telegram client setup", () => {
   });
 
   it("refuses interactive prompts when starting the daemon", async () => {
-    const start = vi.fn(async (params: typeof daemonStartParams) => {
-      await params.phone?.();
+    const start = vi.fn(async (params?: typeof daemonStartParams) => {
+      await params?.phone?.();
     });
 
     await expect(startDaemonSession({ start })).rejects.toThrow("run login first");
@@ -47,35 +47,35 @@ describe("telegram client setup", () => {
   });
 });
 
-describe("Telegram adapter", () => {
+describe("telegram adapter", () => {
   it("starts the Post stream when a handler is registered", () => {
     const onNewMessage = { add: vi.fn() };
     const onMessageGroup = { add: vi.fn() };
     const client = {
-      sendText: vi.fn(),
-      iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(),
-      onNewMessage,
+      iterDialogs: async function* () {},
       onMessageGroup,
+      onNewMessage,
+      sendText: vi.fn(),
     };
     const telegram = createTelegramAdapter(client);
     const handler = vi.fn();
 
     telegram.onPost(handler);
 
-    expect(onNewMessage.add).toHaveBeenCalledOnce();
-    expect(onMessageGroup.add).toHaveBeenCalledOnce();
+    expect(onNewMessage.add).toHaveBeenCalledTimes(1);
+    expect(onMessageGroup.add).toHaveBeenCalledTimes(1);
   });
 
   it("turns a non-service message into a text-only Post", () => {
     const onNewMessage = { add: vi.fn() };
     const onMessageGroup = { add: vi.fn() };
     const client = {
-      sendText: vi.fn(),
-      iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(),
-      onNewMessage,
+      iterDialogs: async function* () {},
       onMessageGroup,
+      onNewMessage,
+      sendText: vi.fn(),
     };
     const telegram = createTelegramAdapter(client);
     const handler = vi.fn();
@@ -83,7 +83,7 @@ describe("Telegram adapter", () => {
     const onNewMessageHandler = onNewMessage.add.mock.calls[0][0];
 
     onNewMessageHandler({
-      chat: { id: -1001234567890 },
+      chat: { id: -1_001_234_567_890 },
       id: 42,
       isService: false,
       link: "https://t.me/example/42",
@@ -92,10 +92,10 @@ describe("Telegram adapter", () => {
 
     expect(handler).toHaveBeenCalledWith({
       chatId: -1001234567890,
-      messageIds: [42],
-      text: "Flat for rent",
-      photos: [],
       link: "https://t.me/example/42",
+      messageIds: [42],
+      photos: [],
+      text: "Flat for rent",
     });
   });
 
@@ -103,11 +103,11 @@ describe("Telegram adapter", () => {
     const onNewMessage = { add: vi.fn() };
     const onMessageGroup = { add: vi.fn() };
     const client = {
-      sendText: vi.fn(),
-      iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(),
-      onNewMessage,
+      iterDialogs: async function* () {},
       onMessageGroup,
+      onNewMessage,
+      sendText: vi.fn(),
     };
     const telegram = createTelegramAdapter(client);
     const handler = vi.fn();
@@ -115,7 +115,7 @@ describe("Telegram adapter", () => {
     const onNewMessageHandler = onNewMessage.add.mock.calls[0][0];
 
     onNewMessageHandler({
-      chat: { id: -1001234567890 },
+      chat: { id: -1_001_234_567_890 },
       id: 43,
       isService: true,
       link: "https://t.me/example/43",
@@ -131,23 +131,23 @@ describe("Telegram adapter", () => {
     const firstThumbnail = { name: "first-y" };
     const secondThumbnail = { name: "second-x" };
     const thirdPhoto = {
-      type: "photo" as const,
       getThumbnail: vi.fn(() => null),
+      type: "photo" as const,
     };
     const firstPhoto = {
-      type: "photo" as const,
       getThumbnail: vi.fn((size: string) => (size === "y" ? firstThumbnail : null)),
+      type: "photo" as const,
     };
     const secondPhoto = {
-      type: "photo" as const,
       getThumbnail: vi.fn((size: string) => (size === "x" ? secondThumbnail : null)),
+      type: "photo" as const,
     };
     const client = {
-      sendText: vi.fn(),
-      iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(async (location) => location),
-      onNewMessage,
+      iterDialogs: async function* () {},
       onMessageGroup,
+      onNewMessage,
+      sendText: vi.fn(),
     };
     const telegram = createTelegramAdapter(client);
     const handler = vi.fn();
@@ -157,41 +157,41 @@ describe("Telegram adapter", () => {
     onMessageGroupHandler([
       {
         chat: { id: -1001234567890 },
+        groupedIdUnique: "album-7",
         id: 43,
         isService: false,
-        groupedIdUnique: "album-7",
         link: "https://t.me/example/43",
-        text: "Second caption",
         media: secondPhoto,
+        text: "Second caption",
       },
       {
         chat: { id: -1001234567890 },
+        groupedIdUnique: "album-7",
         id: 42,
         isService: false,
-        groupedIdUnique: "album-7",
         link: "https://t.me/example/42",
-        text: "First caption",
         media: firstPhoto,
+        text: "First caption",
       },
       {
         chat: { id: -1001234567890 },
+        groupedIdUnique: "album-7",
         id: 44,
         isService: false,
-        groupedIdUnique: "album-7",
         link: "https://t.me/example/44",
-        text: "",
         media: thirdPhoto,
+        text: "",
       },
     ]);
 
-    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledTimes(1);
     const [post] = handler.mock.calls[0];
     expect(post).toMatchObject({
-      chatId: -1001234567890,
-      messageIds: [42, 43, 44],
       albumId: "album-7",
-      text: "First caption\n\nSecond caption",
+      chatId: -1001234567890,
       link: "https://t.me/example/42",
+      messageIds: [42, 43, 44],
+      text: "First caption\n\nSecond caption",
     });
     expect(post.photos).toHaveLength(3);
     await expect(telegram.downloadPhoto(post.photos[0])).resolves.toBe(firstThumbnail);
@@ -206,34 +206,34 @@ describe("Telegram adapter", () => {
     const onNewMessage = { add: vi.fn() };
     const onMessageGroup = { add: vi.fn() };
     const client = {
-      sendText: vi.fn(),
-      iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(),
-      onNewMessage,
+      iterDialogs: async function* () {},
       onMessageGroup,
+      onNewMessage,
+      sendText: vi.fn(),
     };
     const telegram = createTelegramAdapter(client);
     const handler = vi.fn();
     telegram.onPost(handler);
     const photos = Array.from({ length: 7 }, (_, index) => ({
-      type: "photo" as const,
       getThumbnail: vi.fn(() => ({ index })),
+      type: "photo" as const,
     }));
     const onMessageGroupHandler = onMessageGroup.add.mock.calls[0][0];
 
     onMessageGroupHandler(
       photos.map((media, index) => ({
         chat: { id: -1001234567890 },
+        groupedIdUnique: "album-9",
         id: 80 + index,
         isService: false,
-        groupedIdUnique: "album-9",
         link: `https://t.me/example/${80 + index}`,
-        text: "",
         media,
+        text: "",
       })),
     );
 
-    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledTimes(1);
     expect(handler.mock.calls[0][0].photos).toHaveLength(6);
   });
 
@@ -241,15 +241,15 @@ describe("Telegram adapter", () => {
     const onNewMessage = { add: vi.fn() };
     const onMessageGroup = { add: vi.fn() };
     const photo = {
-      type: "photo" as const,
       getThumbnail: vi.fn(() => null),
+      type: "photo" as const,
     };
     const client = {
-      sendText: vi.fn(),
-      iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(),
-      onNewMessage,
+      iterDialogs: async function* () {},
       onMessageGroup,
+      onNewMessage,
+      sendText: vi.fn(),
     };
     const telegram = createTelegramAdapter(client);
     const handler = vi.fn();
@@ -261,24 +261,24 @@ describe("Telegram adapter", () => {
       id: 44,
       isService: false,
       link: "https://t.me/example/44",
-      text: "Photo flat",
       media: photo,
+      text: "Photo flat",
     });
     onNewMessageHandler({
       chat: { id: -1001234567890 },
       id: 45,
       isService: false,
       link: "https://t.me/example/45",
+      media: { getThumbnail: vi.fn(), type: "video" },
       text: "Video flat",
-      media: { type: "video", getThumbnail: vi.fn() },
     });
     onNewMessageHandler({
       chat: { id: -1001234567890 },
       id: 46,
       isService: false,
       link: "https://t.me/example/46",
+      media: { getThumbnail: vi.fn(), type: "document" },
       text: "Document flat",
-      media: { type: "document", getThumbnail: vi.fn() },
     });
 
     expect(handler.mock.calls[0][0].photos).toHaveLength(1);
@@ -287,13 +287,13 @@ describe("Telegram adapter", () => {
   });
 
   it("sends to Saved Messages with link previews disabled", async () => {
-    const sendText = vi.fn(async () => undefined);
+    const sendText = vi.fn(async () => {});
     const client = {
-      sendText,
-      iterDialogs: async function* () {},
       downloadAsBuffer: vi.fn(),
-      onNewMessage: { add: vi.fn() },
+      iterDialogs: async function* () {},
       onMessageGroup: { add: vi.fn() },
+      onNewMessage: { add: vi.fn() },
+      sendText,
     };
     const telegram = createTelegramAdapter(client);
 
@@ -305,21 +305,23 @@ describe("Telegram adapter", () => {
   });
 
   it("lists marked IDs for joined channels, including archived dialogs", async () => {
-    const iterDialogs = vi.fn(async function* () {
-      yield { peer: { type: "chat", chatType: "channel", id: -1001234567890 } };
-      yield { peer: { type: "chat", chatType: "supergroup", id: -1002222222222 } };
-      yield { peer: { type: "chat", chatType: "channel", id: -1009876543210 } };
+    const iterDialogs = vi.fn(async function* iterDialogs() {
+      yield { peer: { chatType: "channel", id: -1001234567890, type: "chat" } };
+      yield { peer: { chatType: "supergroup", id: -1002222222222, type: "chat" } };
+      yield { peer: { chatType: "channel", id: -1009876543210, type: "chat" } };
     });
     const client = {
-      sendText: vi.fn(),
-      iterDialogs,
       downloadAsBuffer: vi.fn(),
-      onNewMessage: { add: vi.fn() },
+      iterDialogs,
       onMessageGroup: { add: vi.fn() },
+      onNewMessage: { add: vi.fn() },
+      sendText: vi.fn(),
     };
     const telegram = createTelegramAdapter(client);
 
-    await expect(telegram.joinedChannelIds()).resolves.toEqual([-1001234567890, -1009876543210]);
+    await expect(telegram.joinedChannelIds()).resolves.toStrictEqual([
+      -1_001_234_567_890, -1_009_876_543_210,
+    ]);
     expect(iterDialogs).toHaveBeenCalledWith({ archived: "keep" });
   });
 });

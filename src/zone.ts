@@ -3,38 +3,38 @@ import { readFileSync } from "node:fs";
 
 import { errorMessage } from "./errors.js";
 
-type ZoneGeometry = {
+interface ZoneGeometry {
   type: "Polygon" | "MultiPolygon";
   coordinates: unknown;
-};
+}
 
-export interface ZoneFeature {
+interface ZoneFeature {
   type: "Feature";
   properties: Record<string, unknown> | null;
   geometry: ZoneGeometry;
 }
 
-export interface ZoneFile {
+interface ZoneFile {
   type: "FeatureCollection";
   features: ZoneFeature[];
 }
 
-export interface ZoneResult {
+interface ZoneResult {
   inside: boolean;
   zone: string | null;
 }
 
 /** A location on the map. GeoJSON's own [lon, lat] order is confined to toPosition. */
-export interface Point {
+interface Point {
   lat: number;
   lon: number;
 }
 
-export interface ZoneChecker {
-  inZone(point: Point): ZoneResult;
+interface ZoneChecker {
+  inZone: (point: Point) => ZoneResult;
 }
 
-export function readZoneFile(zonePath: string): ZoneFile {
+function readZoneFile(zonePath: string): ZoneFile {
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(zonePath, "utf8"));
@@ -47,14 +47,14 @@ export function readZoneFile(zonePath: string): ZoneFile {
   const features = zoneFeatures(parsed, zonePath);
   if (features.length === 0) {
     throw new Error(
-      'Zone file "' + zonePath + '" must contain at least one Polygon or MultiPolygon feature',
+      `Zone file "${zonePath}" must contain at least one Polygon or MultiPolygon feature`,
     );
   }
 
-  return { type: "FeatureCollection", features };
+  return { features, type: "FeatureCollection" };
 }
 
-export function createZoneChecker(zonePath: string): ZoneChecker {
+function createZoneChecker(zonePath: string): ZoneChecker {
   return {
     inZone(point) {
       const zone = readZoneFile(zonePath);
@@ -88,7 +88,7 @@ function zoneFeatures(value: unknown, zonePath: string): ZoneFeature[] {
     for (const feature of value.features) {
       if (!isGeoJsonFeature(feature)) {
         throw new Error(
-          'Zone file "' + zonePath + '" is not valid GeoJSON: contains an invalid feature',
+          `Zone file "${zonePath}" is not valid GeoJSON: contains an invalid feature`,
         );
       }
       if (isZoneFeature(feature)) {
@@ -171,7 +171,7 @@ function isLinearRing(value: unknown): boolean {
   }
 
   const first = value[0];
-  const last = value[value.length - 1];
+  const last = value.at(-1);
   return (
     value.every(isPosition) &&
     Array.isArray(first) &&
@@ -204,3 +204,13 @@ function isRecord(value: unknown): value is Record<string, any> {
 function toPosition(point: Point): [number, number] {
   return [point.lon, point.lat];
 }
+
+export {
+  type ZoneFeature,
+  type ZoneFile,
+  type ZoneResult,
+  type Point,
+  type ZoneChecker,
+  readZoneFile,
+  createZoneChecker,
+};
