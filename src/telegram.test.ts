@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
+import type { Post, TelegramClientLike } from "./telegram.js";
 
 import {
   DEVICE_INFO,
@@ -10,6 +11,22 @@ import {
   startDaemonSession,
   telegramClientOptions,
 } from "./telegram.js";
+
+/**
+ * The fields of mtcute's Message that the adapter reads. Building a real
+ * Message would mean fabricating 50-odd properties none of these tests touch,
+ * so the listeners are narrowed to this shape where they are pulled off the
+ * mock instead.
+ */
+interface FakeMessage {
+  chat: { id: number };
+  id: number;
+  isService: boolean;
+  link: string;
+  text: string;
+  media?: unknown;
+  groupedIdUnique?: string;
+}
 
 const settings = {
   apiHash: "hash",
@@ -49,17 +66,17 @@ describe("telegram client setup", () => {
 
 describe("telegram adapter", () => {
   it("starts the Post stream when a handler is registered", () => {
-    const onNewMessage = { add: vi.fn() };
-    const onMessageGroup = { add: vi.fn() };
+    const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
+    const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
-      downloadAsBuffer: vi.fn(),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {},
       onMessageGroup,
       onNewMessage,
-      sendText: vi.fn(),
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
     const telegram = createTelegramAdapter(client);
-    const handler = vi.fn();
+    const handler = vi.fn<(post: Post) => void>();
 
     telegram.onPost(handler);
 
@@ -68,19 +85,21 @@ describe("telegram adapter", () => {
   });
 
   it("turns a non-service message into a text-only Post", () => {
-    const onNewMessage = { add: vi.fn() };
-    const onMessageGroup = { add: vi.fn() };
+    const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
+    const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
-      downloadAsBuffer: vi.fn(),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {},
       onMessageGroup,
       onNewMessage,
-      sendText: vi.fn(),
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
     const telegram = createTelegramAdapter(client);
-    const handler = vi.fn();
+    const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
-    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0];
+    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0] as unknown as (
+      message: FakeMessage,
+    ) => void;
 
     onNewMessageHandler({
       chat: { id: -1_001_234_567_890 },
@@ -100,19 +119,21 @@ describe("telegram adapter", () => {
   });
 
   it("does not emit service messages", () => {
-    const onNewMessage = { add: vi.fn() };
-    const onMessageGroup = { add: vi.fn() };
+    const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
+    const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
-      downloadAsBuffer: vi.fn(),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {},
       onMessageGroup,
       onNewMessage,
-      sendText: vi.fn(),
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
     const telegram = createTelegramAdapter(client);
-    const handler = vi.fn();
+    const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
-    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0];
+    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0] as unknown as (
+      message: FakeMessage,
+    ) => void;
 
     onNewMessageHandler({
       chat: { id: -1_001_234_567_890 },
@@ -126,8 +147,8 @@ describe("telegram adapter", () => {
   });
 
   it("turns an album into one ordered Post with captions and photo references", async () => {
-    const onNewMessage = { add: vi.fn() };
-    const onMessageGroup = { add: vi.fn() };
+    const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
+    const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const firstThumbnail = { name: "first-y" };
     const secondThumbnail = { name: "second-x" };
     const thirdPhoto = {
@@ -143,16 +164,20 @@ describe("telegram adapter", () => {
       type: "photo" as const,
     };
     const client = {
-      downloadAsBuffer: vi.fn(async (location) => location),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(
+        async (location) => location as unknown as Uint8Array,
+      ),
       iterDialogs: async function* () {},
       onMessageGroup,
       onNewMessage,
-      sendText: vi.fn(),
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
     const telegram = createTelegramAdapter(client);
-    const handler = vi.fn();
+    const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
-    const onMessageGroupHandler = onMessageGroup.add.mock.calls[0][0];
+    const onMessageGroupHandler = onMessageGroup.add.mock.calls[0][0] as unknown as (
+      messages: FakeMessage[],
+    ) => void;
 
     onMessageGroupHandler([
       {
@@ -203,23 +228,25 @@ describe("telegram adapter", () => {
   });
 
   it("keeps at most six photos in album message order", () => {
-    const onNewMessage = { add: vi.fn() };
-    const onMessageGroup = { add: vi.fn() };
+    const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
+    const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
-      downloadAsBuffer: vi.fn(),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {},
       onMessageGroup,
       onNewMessage,
-      sendText: vi.fn(),
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
     const telegram = createTelegramAdapter(client);
-    const handler = vi.fn();
+    const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
     const photos = Array.from({ length: 7 }, (_, index) => ({
       getThumbnail: vi.fn(() => ({ index })),
       type: "photo" as const,
     }));
-    const onMessageGroupHandler = onMessageGroup.add.mock.calls[0][0];
+    const onMessageGroupHandler = onMessageGroup.add.mock.calls[0][0] as unknown as (
+      messages: FakeMessage[],
+    ) => void;
 
     onMessageGroupHandler(
       photos.map((media, index) => ({
@@ -238,23 +265,25 @@ describe("telegram adapter", () => {
   });
 
   it("includes a photo on a single-message Post and skips non-photo media", () => {
-    const onNewMessage = { add: vi.fn() };
-    const onMessageGroup = { add: vi.fn() };
+    const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
+    const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const photo = {
       getThumbnail: vi.fn(() => null),
       type: "photo" as const,
     };
     const client = {
-      downloadAsBuffer: vi.fn(),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {},
       onMessageGroup,
       onNewMessage,
-      sendText: vi.fn(),
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
     const telegram = createTelegramAdapter(client);
-    const handler = vi.fn();
+    const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
-    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0];
+    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0] as unknown as (
+      message: FakeMessage,
+    ) => void;
 
     onNewMessageHandler({
       chat: { id: -1001234567890 },
@@ -287,12 +316,12 @@ describe("telegram adapter", () => {
   });
 
   it("sends to Saved Messages with link previews disabled", async () => {
-    const sendText = vi.fn(async () => {});
+    const sendText = vi.fn<TelegramClientLike["sendText"]>(async () => undefined);
     const client = {
-      downloadAsBuffer: vi.fn(),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {},
-      onMessageGroup: { add: vi.fn() },
-      onNewMessage: { add: vi.fn() },
+      onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
+      onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
       sendText,
     };
     const telegram = createTelegramAdapter(client);
@@ -305,17 +334,17 @@ describe("telegram adapter", () => {
   });
 
   it("lists marked IDs for joined channels, including archived dialogs", async () => {
-    const iterDialogs = vi.fn(async function* iterDialogs() {
+    const iterDialogs = vi.fn<TelegramClientLike["iterDialogs"]>(async function* iterDialogs() {
       yield { peer: { chatType: "channel", id: -1001234567890, type: "chat" } };
       yield { peer: { chatType: "supergroup", id: -1002222222222, type: "chat" } };
       yield { peer: { chatType: "channel", id: -1009876543210, type: "chat" } };
     });
     const client = {
-      downloadAsBuffer: vi.fn(),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs,
-      onMessageGroup: { add: vi.fn() },
-      onNewMessage: { add: vi.fn() },
-      sendText: vi.fn(),
+      onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
+      onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
     const telegram = createTelegramAdapter(client);
 

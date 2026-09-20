@@ -93,5 +93,13 @@
     ".claude",
     ".scratch",
     "docs"
+  ],
+  "overrides": [
+    {
+      "files": ["**/*.test.ts"],
+      "rules": {
+        "typescript/no-unsafe-type-assertion": "off"
+      }
+    }
   ]
 }
