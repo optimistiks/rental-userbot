@@ -9,7 +9,7 @@ function lockPath(): string {
   return join(mkdtempSync(join(tmpdir(), "rental-userbot-")), "session.lock");
 }
 
-describe(acquireSessionLock, () => {
+describe("acquireSessionLock", () => {
   it("refuses a second holder while the first is running", () => {
     expect.hasAssertions();
     const path = lockPath();

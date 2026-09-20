@@ -18,7 +18,7 @@ const validEnvironment = {
   LOCATIONIQ_TOKEN: "locationiq-token",
 };
 
-describe(readSettings, () => {
+describe("readSettings", () => {
   it("reads only the API settings needed by login", () => {
     expect.hasAssertions();
     expect(

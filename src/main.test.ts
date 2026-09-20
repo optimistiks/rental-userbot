@@ -20,7 +20,7 @@ function noLock(): SessionLock {
   };
 }
 
-describe(runLogin, () => {
+describe("runLogin", () => {
   it("starts an interactive client without reading daemon settings", async () => {
     expect.hasAssertions();
     const start = vi.fn<SessionClient["start"]>(() => Promise.resolve());
@@ -41,11 +41,11 @@ describe(runLogin, () => {
 
     expect(makeClient).toHaveBeenCalledWith(loginSettings);
     expect(start).toHaveBeenCalledWith();
-    expect(destroy).toHaveBeenCalledOnce();
+    expect(destroy).toHaveBeenCalledTimes(1);
   });
 });
 
-describe(runDaemon, () => {
+describe("runDaemon", () => {
   it("connects before checking membership and announcing startup", async () => {
     expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
@@ -123,6 +123,6 @@ describe(runDaemon, () => {
     await expect(
       runDaemon(settings, () => client, join(directory, "bot.sqlite"), undefined, noLock()),
     ).rejects.toThrow("Saved Messages unavailable");
-    expect(client.destroy).toHaveBeenCalledOnce();
+    expect(client.destroy).toHaveBeenCalledTimes(1);
   });
 });

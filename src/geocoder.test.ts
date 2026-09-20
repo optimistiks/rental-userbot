@@ -19,7 +19,7 @@ afterAll(() => {
   server.close();
 });
 
-describe(precisionForMatchLevel, () => {
+describe("precisionForMatchLevel", () => {
   it.each([
     ["building", "building"],
     ["venue", "place"],
@@ -32,7 +32,7 @@ describe(precisionForMatchLevel, () => {
   });
 });
 
-describe(createGeocoder, () => {
+describe("createGeocoder", () => {
   it("sends the LocationIQ query and maps results to the tool shape", async () => {
     expect.hasAssertions();
     server.use(

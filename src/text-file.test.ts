@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { readCriteriaFile, readPromptFile } from "./text-file.js";
 
-describe(readCriteriaFile, () => {
+describe("readCriteriaFile", () => {
   it("reads the criteria text from the configured path", () => {
     expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
@@ -25,7 +25,7 @@ describe(readCriteriaFile, () => {
   });
 });
 
-describe(readPromptFile, () => {
+describe("readPromptFile", () => {
   it("reads the prompt text from the configured path", () => {
     expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));

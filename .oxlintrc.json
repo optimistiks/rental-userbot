@@ -88,7 +88,9 @@
       {
         "max": 10
       }
-    ]
+    ],
+    "vitest/prefer-called-once": "off",
+    "vitest/prefer-describe-function-title": "off"
   },
   "ignorePatterns": [
     "node_modules",

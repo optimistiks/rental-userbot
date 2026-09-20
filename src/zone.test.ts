@@ -27,7 +27,7 @@ function writeZone(value: unknown): string {
   return path;
 }
 
-describe(readZoneFile, () => {
+describe("readZoneFile", () => {
   it("reads a FeatureCollection with Polygon and MultiPolygon features", () => {
     expect.hasAssertions();
     const path = writeZone({
@@ -110,7 +110,7 @@ describe(readZoneFile, () => {
   });
 });
 
-describe(createZoneChecker, () => {
+describe("createZoneChecker", () => {
   it("answers known points from the starting Zone", () => {
     expect.hasAssertions();
     const checker = createZoneChecker(join(process.cwd(), "data.example/zone.geojson"));

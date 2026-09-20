@@ -86,8 +86,8 @@ describe("telegram adapter", () => {
 
     telegram.onPost(handler);
 
-    expect(onNewMessage.add).toHaveBeenCalledOnce();
-    expect(onMessageGroup.add).toHaveBeenCalledOnce();
+    expect(onNewMessage.add).toHaveBeenCalledTimes(1);
+    expect(onMessageGroup.add).toHaveBeenCalledTimes(1);
   });
 
   it("turns a non-service message into a text-only Post", () => {
@@ -228,7 +228,7 @@ describe("telegram adapter", () => {
       },
     ]);
 
-    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledTimes(1);
     const [post] = handler.mock.calls[0];
     expect(post).toMatchObject({
       albumId: "album-7",
@@ -282,7 +282,7 @@ describe("telegram adapter", () => {
       })),
     );
 
-    expect(handler).toHaveBeenCalledOnce();
+    expect(handler).toHaveBeenCalledTimes(1);
     expect(handler.mock.calls[0][0].photos).toHaveLength(6);
   });
 

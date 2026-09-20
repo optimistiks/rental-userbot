@@ -13,7 +13,7 @@ const post = (overrides: Partial<Post>): Post => ({
   ...overrides,
 });
 
-describe(postKey, () => {
+describe("postKey", () => {
   it("uses the chat and message ID for a single-message Post", () => {
     expect.hasAssertions();
     expect(postKey(post({ messageIds: [42] }))).toBe("-1001234567890:42");
@@ -27,7 +27,7 @@ describe(postKey, () => {
   });
 });
 
-describe(openDedupeStore, () => {
+describe("openDedupeStore", () => {
   it("creates the processed-posts store in the supplied SQLite database", () => {
     expect.hasAssertions();
     const store = openDedupeStore(":memory:");

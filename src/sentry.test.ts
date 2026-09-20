@@ -48,7 +48,7 @@ describe("sentry reporter", () => {
     await expect(reporter.run("https://t.me/example/1", operation)).resolves.toBe("done");
 
     expect(reporter.enabled).toBe(false);
-    expect(operation).toHaveBeenCalledOnce();
+    expect(operation).toHaveBeenCalledTimes(1);
     expect(sentry.init).not.toHaveBeenCalled();
     expect(sentry.startSpan).not.toHaveBeenCalled();
   });
@@ -143,7 +143,7 @@ describe("sentry reporter", () => {
     );
 
     await expect(reporter.run("https://t.me/example/3", operation)).resolves.toBe("done");
-    expect(operation).toHaveBeenCalledOnce();
+    expect(operation).toHaveBeenCalledTimes(1);
   });
 
   it("scrubs credentials and database paths before sending error data", () => {

@@ -25,7 +25,7 @@ const settings = (
   zonePath,
 });
 
-describe(initializeStartup, () => {
+describe("initializeStartup", () => {
   it("checks the Criteria file and initializes a SQLite Dedupe Store", () => {
     expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
@@ -72,7 +72,7 @@ describe(initializeStartup, () => {
   });
 });
 
-describe(announceStartup, () => {
+describe("announceStartup", () => {
   it("sends the startup message and reports missing channels", async () => {
     expect.hasAssertions();
     const telegram = {

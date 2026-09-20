@@ -304,7 +304,7 @@ describe("failure paths", () => {
       kind: "evaluation-failure",
     });
     expect(model.doGenerateCalls).toHaveLength(0);
-    expect(consoleError).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledTimes(1);
     consoleError.mockRestore();
   });
 
@@ -338,7 +338,7 @@ describe("failure paths", () => {
 
     await pipeline.process(post(5));
 
-    expect(telegram.sendToMe).toHaveBeenCalledOnce();
+    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe).toHaveBeenCalledWith(
       "https://t.me/example/5\n⚠️ couldn't evaluate: Error: model unavailable",
     );
@@ -421,7 +421,7 @@ describe("failure paths", () => {
 
     await pipeline.process(post(8));
 
-    expect(telegram.sendToMe).toHaveBeenCalledOnce();
+    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe.mock.calls[0]?.[0]).toHaveLength(4096);
     log.mockRestore();
     dedupeStore.close();
