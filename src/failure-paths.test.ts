@@ -395,36 +395,4 @@ describe("failure paths", () => {
     log.mockRestore();
     dedupeStore.close();
   });
-
-  it("caps a Match notification at Telegram’s 4096-character limit", async () => {
-    expect.hasAssertions();
-    const dedupeStore = openDedupeStore(":memory:");
-    const telegram = {
-      sendToMe: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),
-    };
-    const evaluator = {
-      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
-        Promise.resolve({
-          match: true,
-          notes: "x".repeat(5000),
-        }),
-      ),
-    };
-    const log = vi.spyOn(console, "log").mockImplementation(() => {
-      /* Keep test output quiet. */
-    });
-    const pipeline = createPostPipeline({
-      dedupeStore,
-      evaluator,
-      telegram,
-      watchlist: staticWatchlist,
-    });
-
-    await pipeline.process(post(8));
-
-    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
-    expect(telegram.sendToMe.mock.calls[0]?.[0]).toHaveLength(4096);
-    log.mockRestore();
-    dedupeStore.close();
-  });
 });

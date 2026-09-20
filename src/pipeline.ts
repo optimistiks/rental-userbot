@@ -21,8 +21,6 @@ interface PostPipelineOptions {
   errorReporter?: ErrorReporter;
 }
 
-const MAX_TELEGRAM_MESSAGE_LENGTH = 4096;
-
 function createPostPipeline(options: PostPipelineOptions): PostPipeline {
   let queueTail = Promise.resolve();
   const errorReporter = options.errorReporter ?? createSentryReporter();
@@ -83,7 +81,7 @@ async function processQueuedPost(
   try {
     const notification = notificationFor(post, verdict);
     if (notification !== undefined) {
-      await options.telegram.sendToMe(truncateTelegramMessage(notification));
+      await options.telegram.sendToMe(notification);
     }
   } catch (error) {
     console.error(`post ${post.link}: failed to send notification`, error);
@@ -117,13 +115,4 @@ function isEvaluationFailure(verdict: Verdict): verdict is EvaluationFailure {
   return "kind" in verdict && verdict.kind === "evaluation-failure";
 }
 
-function truncateTelegramMessage(message: string): string {
-  return message.slice(0, MAX_TELEGRAM_MESSAGE_LENGTH);
-}
-
-export {
-  type PostPipeline,
-  type PostPipelineOptions,
-  MAX_TELEGRAM_MESSAGE_LENGTH,
-  createPostPipeline,
-};
+export { type PostPipeline, type PostPipelineOptions, createPostPipeline };

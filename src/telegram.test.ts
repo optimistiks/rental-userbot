@@ -41,6 +41,33 @@ function thumbnailForSize(
   return (size) => (size === wanted ? thumbnail : null);
 }
 
+type SendTextSpy = ReturnType<typeof vi.fn<TelegramClientLike["sendText"]>>;
+
+function clientWithSendSpy(): { client: TelegramClientLike; sendText: SendTextSpy } {
+  const sendText = vi.fn<TelegramClientLike["sendText"]>(() => Promise.resolve());
+  return {
+    client: {
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
+        /* No dialogs in these tests. */
+      },
+      onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
+      onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
+      sendText,
+    },
+    sendText,
+  };
+}
+
+/** Unwrapping the spy call out here keeps the conditional out of the test body. */
+function lastSentText(sendText: SendTextSpy): string {
+  const call = sendText.mock.calls.at(-1);
+  if (call === undefined) {
+    throw new Error("nothing was sent to Saved Messages");
+  }
+  return call[1];
+}
+
 describe("telegram client setup", () => {
   it("uses the persistent session and the specified update settings", () => {
     expect.hasAssertions();
@@ -348,25 +375,31 @@ describe("telegram adapter", () => {
     expect(handler.mock.calls[2][0].photos).toHaveLength(0);
   });
 
-  it("sends to Saved Messages with link previews disabled", async () => {
+  it("tags a Saved Messages write and disables its link preview", async () => {
     expect.hasAssertions();
-    const sendText = vi.fn<TelegramClientLike["sendText"]>(() => Promise.resolve());
-    const client = {
-      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      async *iterDialogs(): AsyncGenerator<DialogLike> {
-        /* No dialogs in this test. */
-      },
-      onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
-      onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
-      sendText,
-    };
+    const { client, sendText } = clientWithSendSpy();
     const telegram = createTelegramAdapter(client);
 
     await telegram.sendToMe("https://t.me/example/1\nLooks good");
 
-    expect(sendText).toHaveBeenCalledWith("me", "https://t.me/example/1\nLooks good", {
-      disableWebPreview: true,
-    });
+    expect(sendText).toHaveBeenCalledWith(
+      "me",
+      "#rental_userbot\nhttps://t.me/example/1\nLooks good",
+      { disableWebPreview: true },
+    );
+  });
+
+  it("caps a tagged write at Telegram's message length limit", async () => {
+    expect.hasAssertions();
+    const { client, sendText } = clientWithSendSpy();
+    const telegram = createTelegramAdapter(client);
+
+    await telegram.sendToMe("x".repeat(5000));
+
+    /* Asserting the limit itself, not the formula the adapter uses to reach it. */
+    const sent = lastSentText(sendText);
+    expect(sent).toHaveLength(4096);
+    expect(sent).toMatch(/^#rental_userbot\n/u);
   });
 
   it("lists marked IDs for joined channels, including archived dialogs", async () => {

@@ -16,6 +16,10 @@ makes the final call on its own; no rule in the code overrides it.
 4. A match arrives in Saved Messages as a link plus the agent's notes. Non-matches are silent.
 5. If the model fails three times, you get `⚠️ couldn't evaluate` instead, so nothing disappears quietly.
 
+Every message the bot writes starts with `#rental_userbot` on its own line — matches, evaluation failures
+and the startup line alike — so you can pull them out of Saved Messages with one search. Nothing written
+before this existed is tagged; the filter is clean only from there on.
+
 ## Requirements
 
 - Docker Desktop.

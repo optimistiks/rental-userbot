@@ -10,6 +10,15 @@ const SESSION_PATH = "data/session.sqlite";
 const MESSAGE_GROUPING_INTERVAL = 1000;
 
 /**
+ * Stamped on every write to Saved Messages so the owner can filter what the bot
+ * wrote out of a chat they also use by hand. Telegram ends a hashtag at the
+ * first character that is not a letter, digit or underscore, so a hyphen here
+ * would post as the hashtag "#rental" and the plain text "-userbot".
+ */
+const SAVED_MESSAGES_TAG = "#rental_userbot";
+const MAX_TELEGRAM_MESSAGE_LENGTH = 4096;
+
+/**
  * Telegram answers a flood wait with "back off for N seconds". mtcute sleeps
  * through waits up to 10s by default and throws above that; the process would
  * then die mid-flood. Sleeping through waits up to 5 minutes obeys Telegram
@@ -194,9 +203,14 @@ function createTelegramAdapter(client: TelegramClientLike): Telegram {
       startPostStream();
     },
     async sendToMe(text) {
-      await client.sendText("me", text, { disableWebPreview: true });
+      await client.sendText("me", taggedForSavedMessages(text), { disableWebPreview: true });
     },
   };
+}
+
+/** Tagging and the length cap belong together: the tag counts against the limit. */
+function taggedForSavedMessages(text: string): string {
+  return `${SAVED_MESSAGES_TAG}\n${text}`.slice(0, MAX_TELEGRAM_MESSAGE_LENGTH);
 }
 
 function isChannel(peer: DialogPeer): boolean {

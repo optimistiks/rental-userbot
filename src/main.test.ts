@@ -94,9 +94,11 @@ describe("runDaemon", () => {
     );
 
     expect(events).toStrictEqual(["start", "dialogs", "send", "stream"]);
-    expect(client.sendText).toHaveBeenCalledWith("me", "🟢 started, watching 1/1 channels", {
-      disableWebPreview: true,
-    });
+    expect(client.sendText).toHaveBeenCalledWith(
+      "me",
+      "#rental_userbot\n🟢 started, watching 1/1 channels",
+      { disableWebPreview: true },
+    );
   });
 
   it("closes the client when startup announcement fails", async () => {
