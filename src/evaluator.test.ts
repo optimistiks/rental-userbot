@@ -10,15 +10,6 @@ import type { PhotoRef } from "./telegram.js";
 
 import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
 
-type GenerateResult = Awaited<
-  ReturnType<
-    Extract<
-      NonNullable<ConstructorParameters<typeof MockLanguageModelV4>[0]>["doGenerate"],
-      (options: never) => unknown
-    >
-  >
->;
-
 const usage = {
   inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
   outputTokens: { reasoning: undefined, text: 5, total: 5 },

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
-import type { Post, SessionClient, DialogLike, TelegramClientLike } from "./telegram.js";
+import type { DialogLike, Post, SessionClient, TelegramClientLike } from "./telegram.js";
 
 import {
   DEVICE_INFO,

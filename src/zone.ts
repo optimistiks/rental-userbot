@@ -35,7 +35,7 @@ interface ZoneChecker {
 }
 
 function readZoneFile(zonePath: string): ZoneFile {
-  let parsed: unknown = undefined;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(zonePath, "utf8"));
   } catch (error) {

@@ -362,7 +362,7 @@ describe("failure paths", () => {
       sendToMe: vi
         .fn<Telegram["sendToMe"]>()
         .mockRejectedValueOnce(new Error("Saved Messages unavailable"))
-        .mockResolvedValue(undefined),
+        .mockResolvedValue(),
     };
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
       /* Keep test output quiet. */

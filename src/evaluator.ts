@@ -134,23 +134,15 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
                   }
                 : {}),
               instructions: `${prompt}\n\nCriteria:\n${criteria}`,
+              maxRetries: 0,
               messages: [
                 {
                   content,
                   role: "user",
                 },
               ],
-              stopWhen: isStepCount(retryPolicy.maxSteps),
-              prepareStep: ({ stepNumber }) =>
-                stepNumber === retryPolicy.maxSteps - 1 ? { toolChoice: "none" } : {},
-              output: Output.object({ schema: verdictSchema }),
-              maxRetries: 0,
-              timeout:
-                tools === undefined
-                  ? retryPolicy.timeoutMs
-                  : { toolMs: TOOL_TIMEOUT_MS, totalMs: retryPolicy.timeoutMs },
-              providerOptions: {
-                google: { thinkingConfig: { includeThoughts: true } },
+              onStepEnd: (step) => {
+                logStep(link, step);
               },
               onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
                 const outcome =
@@ -161,14 +153,22 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
                   `post ${link}: ${describeToolCall(toolCall.toolName, toolCall.input)} → ${outcome} in ${Math.round(toolExecutionMs)}ms`,
                 );
               },
-              onStepEnd: (step) => {
-                logStep(link, step);
+              output: Output.object({ schema: verdictSchema }),
+              prepareStep: ({ stepNumber }) =>
+                stepNumber === retryPolicy.maxSteps - 1 ? { toolChoice: "none" } : {},
+              providerOptions: {
+                google: { thinkingConfig: { includeThoughts: true } },
               },
+              stopWhen: isStepCount(retryPolicy.maxSteps),
+              timeout:
+                tools === undefined
+                  ? retryPolicy.timeoutMs
+                  : { toolMs: TOOL_TIMEOUT_MS, totalMs: retryPolicy.timeoutMs },
             }),
           );
 
-          // Read the output first: a run that ends without one is a failed attempt,
-          // And must not be logged as done.
+          /* Read the output first: a run that ends without one is a failed attempt
+             and must not be logged as done. */
           const { output } = result;
           logRunSummary(link, result, Date.now() - startedAt);
           return output;

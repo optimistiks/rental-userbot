@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Settings } from "./config.js";
 import type { ClientFactory } from "./main.js";
 import type { SessionLock } from "./session-lock.js";
-import type { SessionClient, DialogLike, TelegramClientLike } from "./telegram.js";
+import type { DialogLike, SessionClient, TelegramClientLike } from "./telegram.js";
 
 import { runDaemon, runLogin } from "./main.js";
 
@@ -71,7 +71,7 @@ describe("runDaemon", () => {
       // oxlint-disable-next-line typescript/require-await
       async *iterDialogs(): AsyncGenerator<DialogLike> {
         events.push("dialogs");
-        yield { peer: { type: "chat", chatType: "channel", id: -1_001_234_567_890 } };
+        yield { peer: { chatType: "channel", id: -1_001_234_567_890, type: "chat" } };
       },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: {
@@ -120,7 +120,7 @@ describe("runDaemon", () => {
       /* Only an async generator satisfies AsyncIterable; nothing here awaits. */
       // oxlint-disable-next-line typescript/require-await
       async *iterDialogs(): AsyncGenerator<DialogLike> {
-        yield { peer: { type: "chat", chatType: "channel", id: -1_001_234_567_890 } };
+        yield { peer: { chatType: "channel", id: -1_001_234_567_890, type: "chat" } };
       },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },

@@ -1,5 +1,3 @@
-import { fileURLToPath } from "node:url";
-
 import type { LoginSettings, Settings } from "./config.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { SessionLock } from "./session-lock.js";
@@ -45,7 +43,7 @@ async function runDaemon(
   lock: SessionLock = acquireSessionLock(),
 ): Promise<void> {
   let resources: ReturnType<typeof initializeStartup> | undefined;
-  let client: ManagedClient | undefined = undefined;
+  let client: ManagedClient | undefined;
 
   try {
     resources = initializeStartup(settings, databasePath);
@@ -100,7 +98,7 @@ async function start(
   argv: readonly string[] = process.argv,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  let errorReporter: ErrorReporter | undefined = undefined;
+  let errorReporter: ErrorReporter | undefined;
   try {
     if (argv[2] === "login") {
       await runLogin(readLoginSettings(env));
