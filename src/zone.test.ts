@@ -22,6 +22,10 @@ const polygon = (
   type: "Feature",
 });
 
+function temporaryDirectory(): string {
+  return mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+}
+
 function writeZone(value: unknown): string {
   const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
   const zonePath = path.join(directory, "zone.geojson");
@@ -65,10 +69,7 @@ describe("readZoneFile", () => {
     const missingPath = path.join(tmpdir(), "missing-rental-zone.geojson");
     expect(() => readZoneFile(missingPath)).toThrow(new RegExp(`Zone file .*${missingPath}`, "u"));
 
-    const malformedPath = path.join(
-      mkdtempSync(path.join(tmpdir(), "rental-userbot-")),
-      "zone.geojson",
-    );
+    const malformedPath = path.join(temporaryDirectory(), "zone.geojson");
     writeFileSync(malformedPath, "{");
     expect(() => readZoneFile(malformedPath)).toThrow(/Zone file .*valid GeoJSON/u);
 

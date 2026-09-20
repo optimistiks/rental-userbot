@@ -356,8 +356,8 @@ describe("evaluator", () => {
     expect(prompt).toHaveLength(2);
     expect(prompt?.[0]).toStrictEqual(expect.objectContaining({ role: "system" }));
     expect(prompt?.[1]).toStrictEqual(expect.objectContaining({ role: "user" }));
-    const [, userMessage] = prompt ?? [];
-    const userContent = (userMessage as { content: unknown[] }).content;
+    const messages = prompt as { content: unknown[] }[];
+    const userContent = messages[1].content;
     expect(userContent[0]).toStrictEqual({
       providerOptions: undefined,
       text: expect.stringContaining("Flat with photos") as string,

@@ -29,7 +29,7 @@ interface LoginSettings {
 }
 
 class SettingsError extends Error {
-  constructor(message: string) {
+  public constructor(message: string) {
     super(message);
     this.name = "SettingsError";
   }
@@ -37,7 +37,7 @@ class SettingsError extends Error {
 
 function required(env: ProcessEnv, name: string): string {
   const value = env[name]?.trim();
-  if (!value) {
+  if (value === undefined || value === "") {
     throw new SettingsError(`${name} is required`);
   }
   return value;
@@ -61,7 +61,7 @@ function channelIds(value: string): number[] {
     throw new SettingsError("CHANNEL_IDS must be comma-separated marked channel IDs");
   }
 
-  const parsed = ids.map((id) => Number(id));
+  const parsed = ids.map(Number);
   if (parsed.some((id) => !Number.isSafeInteger(id))) {
     throw new SettingsError("CHANNEL_IDS contains an unsafe integer");
   }

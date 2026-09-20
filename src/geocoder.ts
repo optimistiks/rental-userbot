@@ -87,13 +87,13 @@ function createGeocoder(
         throw new GeocoderError("LocationIQ request failed: response was not a result list");
       }
 
-      return { results: body.slice(0, 3).map(toGeocodeResult) };
+      return { results: body.slice(0, 3).map((entry) => toGeocodeResult(entry)) };
     },
   };
 }
 
 class GeocoderError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
+  public constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "GeocoderError";
   }

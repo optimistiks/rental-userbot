@@ -162,7 +162,7 @@ function isZoneGeometry(value: unknown): value is ZoneGeometry {
 }
 
 function isPolygonCoordinates(value: unknown): boolean {
-  return Array.isArray(value) && value.length > 0 && value.every(isLinearRing);
+  return Array.isArray(value) && value.length > 0 && value.every((ring) => isLinearRing(ring));
 }
 
 function isLinearRing(value: unknown): boolean {
@@ -170,10 +170,11 @@ function isLinearRing(value: unknown): boolean {
     return false;
   }
 
-  const [first] = value;
-  const last = value.at(-1);
+  const ring = value as unknown[];
+  const [first] = ring;
+  const last = ring.at(-1);
   return (
-    value.every(isPosition) &&
+    value.every((position) => isPosition(position)) &&
     Array.isArray(first) &&
     Array.isArray(last) &&
     first[0] === last[0] &&
@@ -197,7 +198,7 @@ function featureName(feature: ZoneFeature): string | null {
   return typeof name === "string" ? name : null;
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 

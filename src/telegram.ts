@@ -181,12 +181,10 @@ function createTelegramAdapter(client: TelegramClientLike): Telegram {
 
       for await (const dialog of client.iterDialogs({ archived: "keep" })) {
         const peer = dialog.peer ?? dialog.chat;
-        if (peer === undefined || !isChannel(peer) || seen.has(peer.id)) {
-          continue;
+        if (peer !== undefined && isChannel(peer) && !seen.has(peer.id)) {
+          seen.add(peer.id);
+          channelIds.push(peer.id);
         }
-
-        seen.add(peer.id);
-        channelIds.push(peer.id);
       }
 
       return channelIds;
