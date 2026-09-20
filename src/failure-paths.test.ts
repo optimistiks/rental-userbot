@@ -68,9 +68,7 @@ describe("failure paths", () => {
     expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
-      doGenerate: async () => {
-        throw new Error("gateway failed");
-      },
+      doGenerate: () => Promise.reject(new Error("gateway failed")),
     });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -312,9 +310,7 @@ describe("failure paths", () => {
     expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
-      doGenerate: async () => {
-        throw new Error("model unavailable");
-      },
+      doGenerate: () => Promise.reject(new Error("model unavailable")),
     });
     const telegram = {
       sendToMe: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),

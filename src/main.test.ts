@@ -120,9 +120,9 @@ describe("runDaemon", () => {
       },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
-      sendText: vi.fn<TelegramClientLike["sendText"]>(async () => {
-        throw new Error("Saved Messages unavailable");
-      }),
+      sendText: vi.fn<TelegramClientLike["sendText"]>(() =>
+        Promise.reject(new Error("Saved Messages unavailable")),
+      ),
       start: vi.fn<SessionClient["start"]>(() => Promise.resolve()),
     };
 

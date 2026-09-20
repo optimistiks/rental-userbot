@@ -181,8 +181,8 @@ describe("telegram adapter", () => {
       type: "photo" as const,
     };
     const client = {
-      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(
-        async (location) => location as unknown as Uint8Array,
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>((location) =>
+        Promise.resolve(location as unknown as Uint8Array),
       ),
       async *iterDialogs(): AsyncGenerator<DialogLike> {
         /* No dialogs in this test. */

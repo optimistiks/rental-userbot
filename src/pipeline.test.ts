@@ -42,9 +42,7 @@ describe("post pipeline", () => {
     };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
-      evaluate: vi.fn<Evaluator["evaluate"]>(async () => {
-        throw new Error("evaluator exploded");
-      }),
+      evaluate: vi.fn<Evaluator["evaluate"]>(() => Promise.reject(new Error("evaluator exploded"))),
     };
     const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
     const error = vi.spyOn(console, "error").mockImplementation(() => {
@@ -91,9 +89,9 @@ describe("post pipeline", () => {
       ),
     };
     const telegram = {
-      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {
-        throw new Error("Saved Messages unavailable");
-      }),
+      sendToMe: vi.fn<Telegram["sendToMe"]>(() =>
+        Promise.reject(new Error("Saved Messages unavailable")),
+      ),
     };
     const log = vi.spyOn(console, "error").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -334,9 +332,9 @@ describe("post pipeline", () => {
         warnings: [],
       },
     });
-    const downloadPhoto = vi.fn<NonNullable<EvaluatorOptions["downloadPhoto"]>>(async () => {
-      throw new Error("expired file reference");
-    });
+    const downloadPhoto = vi.fn<NonNullable<EvaluatorOptions["downloadPhoto"]>>(() =>
+      Promise.reject(new Error("expired file reference")),
+    );
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
@@ -506,9 +504,9 @@ describe("post pipeline", () => {
       ),
     };
     const telegram = {
-      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {
-        throw new Error("Saved Messages unavailable");
-      }),
+      sendToMe: vi.fn<Telegram["sendToMe"]>(() =>
+        Promise.reject(new Error("Saved Messages unavailable")),
+      ),
     };
     const pipeline = createPostPipeline({
       channelIds: [-1_001_234_567_890],

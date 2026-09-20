@@ -12,20 +12,20 @@ function lockPath(): string {
 describe("acquireSessionLock", () => {
   it("refuses a second holder while the first is running", () => {
     expect.hasAssertions();
-    const path = lockPath();
-    const first = acquireSessionLock(path);
+    const lockFile = lockPath();
+    const first = acquireSessionLock(lockFile);
 
-    expect(() => acquireSessionLock(path)).toThrow(/Another instance/u);
+    expect(() => acquireSessionLock(lockFile)).toThrow(/Another instance/u);
 
     first.release();
   });
 
   it("lets the next process in once the lock is released", () => {
     expect.hasAssertions();
-    const path = lockPath();
-    acquireSessionLock(path).release();
+    const lockFile = lockPath();
+    acquireSessionLock(lockFile).release();
 
-    const second = acquireSessionLock(path);
+    const second = acquireSessionLock(lockFile);
     expect(second).toBeDefined();
     second.release();
   });

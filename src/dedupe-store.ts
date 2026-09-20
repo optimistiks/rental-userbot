@@ -38,11 +38,11 @@ function openDedupeStore(databasePath: string = BOT_DATABASE_PATH): DedupeStore 
     close() {
       database.close();
     },
-    isProcessed(postKey) {
-      return findPost.get(postKey) !== undefined;
+    isProcessed(key) {
+      return findPost.get(key) !== undefined;
     },
-    markProcessed(postKey) {
-      insertPost.run(postKey, Date.now());
+    markProcessed(key) {
+      insertPost.run(key, Date.now());
     },
   };
 }

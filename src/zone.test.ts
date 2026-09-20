@@ -30,7 +30,7 @@ function writeZone(value: unknown): string {
 describe("readZoneFile", () => {
   it("reads a FeatureCollection with Polygon and MultiPolygon features", () => {
     expect.hasAssertions();
-    const path = writeZone({
+    const zoneFile = writeZone({
       features: [
         polygon("Old Batumi"),
         {
@@ -55,7 +55,7 @@ describe("readZoneFile", () => {
       type: "FeatureCollection",
     });
 
-    expect(readZoneFile(path).features).toHaveLength(2);
+    expect(readZoneFile(zoneFile).features).toHaveLength(2);
   });
 
   it("names a missing, malformed, or empty Zone file", () => {
@@ -130,12 +130,12 @@ describe("createZoneChecker", () => {
 
   it("re-reads the Zone file on every call", () => {
     expect.hasAssertions();
-    const path = writeZone({ features: [polygon("First")], type: "FeatureCollection" });
-    const checker = createZoneChecker(path);
+    const zoneFile = writeZone({ features: [polygon("First")], type: "FeatureCollection" });
+    const checker = createZoneChecker(zoneFile);
 
     expect(checker.inZone({ lat: 0.5, lon: 0.5 })).toStrictEqual({ inside: true, zone: "First" });
     writeFileSync(
-      path,
+      zoneFile,
       JSON.stringify({
         features: [
           polygon("Second", [

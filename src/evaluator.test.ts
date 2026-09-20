@@ -35,9 +35,7 @@ describe("evaluator", () => {
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const model = new MockLanguageModelV4({
-      doGenerate: async () => {
-        throw new Error("gateway failed");
-      },
+      doGenerate: () => Promise.reject(new Error("gateway failed")),
     });
     // Vitest's Mock<T> cannot carry a generic signature, so run is mocked at
     // The instantiation the Evaluator actually uses and widened back once.
@@ -201,9 +199,9 @@ describe("evaluator", () => {
         },
       ],
     });
-    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(async () => {
-      throw new Error("provider unavailable");
-    });
+    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(() =>
+      Promise.reject(new Error("provider unavailable")),
+    );
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
       {
@@ -389,9 +387,9 @@ describe("evaluator", () => {
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const firstPhoto = { __photoRef: true } as PhotoRef;
-    const downloadPhoto = vi.fn<NonNullable<EvaluatorOptions["downloadPhoto"]>>(async () => {
-      throw new Error("expired file reference");
-    });
+    const downloadPhoto = vi.fn<NonNullable<EvaluatorOptions["downloadPhoto"]>>(() =>
+      Promise.reject(new Error("expired file reference")),
+    );
     const model = modelFor({ match: true, notes: "Should not run" });
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
