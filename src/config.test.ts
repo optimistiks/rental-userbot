@@ -20,20 +20,22 @@ const validEnvironment = {
 
 describe(readSettings, () => {
   it("reads only the API settings needed by login", () => {
+    expect.hasAssertions();
     expect(
       readLoginSettings({
         API_HASH: "hash",
         API_ID: "123456",
       }),
-    ).toStrictEqual({ apiHash: "hash", apiId: 123456 });
+    ).toStrictEqual({ apiHash: "hash", apiId: 123_456 });
   });
 
   it("reads required settings, parses marked channel IDs, and applies defaults", () => {
+    expect.hasAssertions();
     expect(readSettings(validEnvironment)).toStrictEqual({
       aiGatewayApiKey: "gateway-key",
       apiHash: "hash",
-      apiId: 123456,
-      channelIds: [-1001234567890, -1009876543210],
+      apiId: 123_456,
+      channelIds: [-1_001_234_567_890, -1_009_876_543_210],
       criteriaPath: CRITERIA_PATH,
       geocoderUrl: GEOCODER_URL,
       locationIqToken: "locationiq-token",
@@ -44,6 +46,7 @@ describe(readSettings, () => {
   });
 
   it("allows optional settings to override defaults", () => {
+    expect.hasAssertions();
     expect(
       readSettings({
         ...validEnvironment,
@@ -63,6 +66,7 @@ describe(readSettings, () => {
   });
 
   it("keeps Sentry disabled unless SENTRY_DSN is set", () => {
+    expect.hasAssertions();
     expect(readSettings(validEnvironment).sentryDsn).toBeUndefined();
     expect(
       readSettings({ ...validEnvironment, SENTRY_DSN: "https://public@example.com/1" }).sentryDsn,
@@ -72,6 +76,7 @@ describe(readSettings, () => {
   it.each(["API_ID", "API_HASH", "CHANNEL_IDS", "AI_GATEWAY_API_KEY", "LOCATIONIQ_TOKEN"])(
     "names missing required setting %s",
     (name) => {
+      expect.hasAssertions();
       const environment = { ...validEnvironment };
       delete environment[name as keyof typeof environment];
 
@@ -80,12 +85,14 @@ describe(readSettings, () => {
   );
 
   it("rejects malformed API_ID", () => {
+    expect.hasAssertions();
     expect(() => readSettings({ ...validEnvironment, API_ID: "not-a-number" })).toThrow(
       new RegExp("API_ID", "u"),
     );
   });
 
   it("rejects unmarked channel IDs", () => {
+    expect.hasAssertions();
     expect(() => readSettings({ ...validEnvironment, CHANNEL_IDS: "12345" })).toThrow(
       new RegExp("CHANNEL_IDS", "u"),
     );

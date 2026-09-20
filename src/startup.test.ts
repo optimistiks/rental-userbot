@@ -15,8 +15,8 @@ const settings = (
 ): Settings => ({
   aiGatewayApiKey: "gateway-key",
   apiHash: "hash",
-  apiId: 123456,
-  channelIds: [-1001234567890],
+  apiId: 123_456,
+  channelIds: [-1_001_234_567_890],
   criteriaPath,
   geocoderUrl: "http://localhost:1234/search",
   locationIqToken: "locationiq-token",
@@ -27,6 +27,7 @@ const settings = (
 
 describe(initializeStartup, () => {
   it("checks the Criteria file and initializes a SQLite Dedupe Store", () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const criteriaPath = join(directory, "criteria.md");
     writeFileSync(criteriaPath, "Criteria text");
@@ -38,12 +39,14 @@ describe(initializeStartup, () => {
   });
 
   it("fails before opening the database when Criteria cannot be read", () => {
+    expect.hasAssertions();
     expect(() => initializeStartup(settings("/missing/criteria.md"), ":memory:")).toThrow(
       /Criteria file/u,
     );
   });
 
   it("names the Prompt file when it cannot be read", () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const criteriaPath = join(directory, "criteria.md");
     const promptPath = join(directory, "prompt.md");
@@ -55,6 +58,7 @@ describe(initializeStartup, () => {
   });
 
   it("names the Zone file when it cannot be read", () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const criteriaPath = join(directory, "criteria.md");
     const promptPath = join(directory, "prompt.md");
@@ -70,12 +74,17 @@ describe(initializeStartup, () => {
 
 describe(announceStartup, () => {
   it("sends the startup message and reports missing channels", async () => {
+    expect.hasAssertions();
     const telegram = {
       joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(async () => [-1_001_234_567_890]),
-      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined),
+      sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
     };
-    const warn = vi.spyOn(console, "warn").mockReturnValue(undefined);
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
 
     await announceStartup(telegram, [-1_001_234_567_890, -1_009_876_543_210]);
 
@@ -92,9 +101,10 @@ describe(announceStartup, () => {
   });
 
   it("omits the not-joined line when every channel is joined", async () => {
+    expect.hasAssertions();
     const telegram = {
       joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(async () => [-1_001_234_567_890]),
-      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined),
+      sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
     };
 
     await announceStartup(telegram, [-1_001_234_567_890]);

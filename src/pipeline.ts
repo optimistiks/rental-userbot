@@ -45,7 +45,9 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
       const queued = queueTail.then(() =>
         processQueuedPost(post, processedPostKey, options, errorReporter),
       );
-      queueTail = queued.catch(() => {});
+      queueTail = queued.catch(() => {
+        /* Failures are reported per post; the queue keeps going. */
+      });
       return queued;
     },
   };

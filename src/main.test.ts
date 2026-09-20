@@ -9,20 +9,27 @@ import type { SessionClient, TelegramClientLike } from "./telegram.js";
 
 import { runDaemon, runLogin } from "./main.js";
 
-const loginSettings = { apiHash: "hash", apiId: 123456 };
+const loginSettings = { apiHash: "hash", apiId: 123_456 };
 
 function noLock() {
-  return { release: () => {} };
+  return {
+    release: () => {
+      /* Nothing to release in tests. */
+    },
+  };
 }
 
 describe(runLogin, () => {
   it("starts an interactive client without reading daemon settings", async () => {
-    const start = vi.fn<SessionClient["start"]>(async () => undefined);
-    const destroy = vi.fn<() => Promise<void>>(async () => undefined);
+    expect.hasAssertions();
+    const start = vi.fn<SessionClient["start"]>(() => Promise.resolve());
+    const destroy = vi.fn<() => Promise<void>>(() => Promise.resolve());
     const makeClient = vi.fn<ClientFactory>(() => ({
       destroy,
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {},
+      iterDialogs: async function* () {
+        /* No dialogs in this test. */
+      },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -39,14 +46,15 @@ describe(runLogin, () => {
 
 describe(runDaemon, () => {
   it("connects before checking membership and announcing startup", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const criteriaPath = join(directory, "criteria.md");
     writeFileSync(criteriaPath, "Criteria");
     const settings = {
       aiGatewayApiKey: "gateway-key",
       apiHash: "hash",
-      apiId: 123456,
-      channelIds: [-1001234567890],
+      apiId: 123_456,
+      channelIds: [-1_001_234_567_890],
       criteriaPath,
       geocoderUrl: "http://localhost:1234/search",
       locationIqToken: "locationiq-token",
@@ -56,11 +64,11 @@ describe(runDaemon, () => {
     } satisfies Settings;
     const events: string[] = [];
     const client = {
-      destroy: vi.fn<() => Promise<void>>(async () => undefined),
+      destroy: vi.fn<() => Promise<void>>(() => Promise.resolve()),
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {
         events.push("dialogs");
-        yield { peer: { type: "chat", chatType: "channel", id: -1001234567890 } };
+        yield { peer: { type: "chat", chatType: "channel", id: -1_001_234_567_890 } };
       },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: {
@@ -81,14 +89,15 @@ describe(runDaemon, () => {
   });
 
   it("closes the client when startup announcement fails", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const criteriaPath = join(directory, "criteria.md");
     writeFileSync(criteriaPath, "Criteria");
     const settings = {
       aiGatewayApiKey: "gateway-key",
       apiHash: "hash",
-      apiId: 123456,
-      channelIds: [-1001234567890],
+      apiId: 123_456,
+      channelIds: [-1_001_234_567_890],
       criteriaPath,
       geocoderUrl: "http://localhost:1234/search",
       locationIqToken: "locationiq-token",
@@ -97,17 +106,17 @@ describe(runDaemon, () => {
       zonePath: join(process.cwd(), "data.example/zone.geojson"),
     } satisfies Settings;
     const client = {
-      destroy: vi.fn<() => Promise<void>>(async () => undefined),
+      destroy: vi.fn<() => Promise<void>>(() => Promise.resolve()),
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {
-        yield { peer: { type: "chat", chatType: "channel", id: -1001234567890 } };
+        yield { peer: { type: "chat", chatType: "channel", id: -1_001_234_567_890 } };
       },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
       sendText: vi.fn<TelegramClientLike["sendText"]>(async () => {
         throw new Error("Saved Messages unavailable");
       }),
-      start: vi.fn<SessionClient["start"]>(async () => undefined),
+      start: vi.fn<SessionClient["start"]>(() => Promise.resolve()),
     };
 
     await expect(

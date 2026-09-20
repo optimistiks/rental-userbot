@@ -28,6 +28,7 @@ function modelFor(...verdicts: { match: boolean; notes: string }[]) {
 
 describe("evaluator", () => {
   it("runs agent telemetry under the Post link and reports evaluation failures", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -56,7 +57,9 @@ describe("evaluator", () => {
         retryPolicy: { attempts: 1, backoffsMs: [], maxSteps: 8, timeoutMs: 100 },
       },
     );
-    const error = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
 
     await expect(
       evaluator.evaluate({
@@ -74,6 +77,7 @@ describe("evaluator", () => {
   });
 
   it("lets the agent geocode and check the Zone before returning its Verdict", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -131,7 +135,9 @@ describe("evaluator", () => {
         },
       ],
     });
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
       {
@@ -162,6 +168,7 @@ describe("evaluator", () => {
   });
 
   it("returns tool errors to the agent so it can recover in the same run", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -213,6 +220,7 @@ describe("evaluator", () => {
   });
 
   it("logs a schema-invalid tool call before the agent recovers", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -246,7 +254,9 @@ describe("evaluator", () => {
         },
       ],
     });
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
       {
@@ -267,6 +277,7 @@ describe("evaluator", () => {
   });
 
   it("re-reads the prompt and Criteria and returns the structured Verdict", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -280,7 +291,9 @@ describe("evaluator", () => {
       { criteriaPath, modelId: "test/model", promptPath },
       { model },
     );
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
 
     await expect(evaluator.evaluate({ text: "First Post" })).resolves.toStrictEqual({
       match: true,
@@ -309,6 +322,7 @@ describe("evaluator", () => {
   });
 
   it("downloads photos once and sends them after the Post text", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -364,6 +378,7 @@ describe("evaluator", () => {
   });
 
   it("returns No match without a model call when all photos fail and text is empty", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -378,8 +393,12 @@ describe("evaluator", () => {
       { criteriaPath, modelId: "test/model", promptPath },
       { downloadPhoto, model },
     );
-    const warn = vi.spyOn(console, "warn").mockReturnValue(undefined);
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
 
     await expect(
       evaluator.evaluate({

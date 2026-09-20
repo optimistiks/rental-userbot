@@ -23,7 +23,9 @@ interface ErrorReporter {
 }
 
 const disabledReporter: ErrorReporter = {
-  captureException: () => undefined,
+  captureException: () => {
+    /* The disabled reporter swallows everything. */
+  },
   enabled: false,
   run: (_postLink, operation) => operation(),
 };

@@ -34,6 +34,7 @@ function post(chatId: number, text: string, id: number): Post {
 
 describe("post pipeline", () => {
   it("still notifies and marks the Post when the Evaluator throws", async () => {
+    expect.hasAssertions();
     const errorReporter: ErrorReporter = {
       captureException: vi.fn<ErrorReporter["captureException"]>(),
       enabled: true,
@@ -45,11 +46,15 @@ describe("post pipeline", () => {
         throw new Error("evaluator exploded");
       }),
     };
-    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {}) };
-    const error = vi.spyOn(console, "error").mockReturnValue(undefined);
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       errorReporter,
       evaluator,
@@ -73,6 +78,7 @@ describe("post pipeline", () => {
   });
 
   it("reports a failed notification with the Post link without blocking the queue", async () => {
+    expect.hasAssertions();
     const errorReporter: ErrorReporter = {
       captureException: vi.fn<ErrorReporter["captureException"]>(),
       enabled: true,
@@ -87,9 +93,11 @@ describe("post pipeline", () => {
         throw new Error("Saved Messages unavailable");
       }),
     };
-    const log = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       errorReporter,
       evaluator,
@@ -109,6 +117,7 @@ describe("post pipeline", () => {
   });
 
   it("sends the Verdict chosen after geocoding and checking the Zone", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -164,14 +173,14 @@ describe("post pipeline", () => {
       inside: true,
       zone: "Old Batumi",
     }));
-    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {}) };
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
       { model, tools: createEvaluatorTools({ geocode, inZone }) },
     );
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
@@ -185,6 +194,7 @@ describe("post pipeline", () => {
   });
 
   it("evaluates watched text Posts, notifies Matches, and drops other Posts", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -208,19 +218,21 @@ describe("post pipeline", () => {
         },
       ],
     });
-    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {}) };
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
       { model },
     );
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
     });
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
 
     await pipeline.process(post(-1_001_234_567_890, "Flat for rent", 1));
     await pipeline.process(post(-1_001_234_567_890, "Another flat", 2));
@@ -238,6 +250,7 @@ describe("post pipeline", () => {
   });
 
   it("evaluates an album once, sends its photos to the model, and drops a late part", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -259,7 +272,7 @@ describe("post pipeline", () => {
       .mockResolvedValueOnce(new Uint8Array([2]));
     const telegram = {
       downloadPhoto,
-      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined),
+      sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
     };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
@@ -267,16 +280,18 @@ describe("post pipeline", () => {
       { downloadPhoto, model },
     );
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
     });
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
 
     await pipeline.process({
       albumId: "album-8",
-      chatId: -1001234567890,
+      chatId: -1_001_234_567_890,
       link: "https://t.me/example/60",
       messageIds: [60, 61],
       photos: [firstPhoto, secondPhoto],
@@ -284,7 +299,7 @@ describe("post pipeline", () => {
     });
     await pipeline.process({
       albumId: "album-8",
-      chatId: -1001234567890,
+      chatId: -1_001_234_567_890,
       link: "https://t.me/example/62",
       messageIds: [62],
       photos: [firstPhoto],
@@ -300,6 +315,7 @@ describe("post pipeline", () => {
   });
 
   it("marks a textless Post processed without an agent run when every photo fails", async () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     const criteriaPath = join(directory, "criteria.md");
@@ -323,15 +339,17 @@ describe("post pipeline", () => {
       { downloadPhoto, model },
     );
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
-      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
     });
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
 
     await pipeline.process({
-      chatId: -1001234567890,
+      chatId: -1_001_234_567_890,
       link: "https://t.me/example/70",
       messageIds: [70],
       photos: [photo],
@@ -348,6 +366,7 @@ describe("post pipeline", () => {
   });
 
   it("evaluates duplicate Posts delivered before the first one is marked only once", async () => {
+    expect.hasAssertions();
     const dedupeStore = openDedupeStore(":memory:");
     let releaseFirst!: () => void;
     const firstEvaluation = new Promise<void>((resolve) => {
@@ -360,12 +379,14 @@ describe("post pipeline", () => {
       }),
     };
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
-      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
     });
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const first = pipeline.process(post(-1_001_234_567_890, "Flat for rent", 5));
     const duplicate = pipeline.process(post(-1_001_234_567_890, "Flat for rent", 5));
 
@@ -382,6 +403,7 @@ describe("post pipeline", () => {
   });
 
   it("evaluates queued Posts one at a time", async () => {
+    expect.hasAssertions();
     const dedupeStore = openDedupeStore(":memory:");
     let releaseFirst!: () => void;
     const firstEvaluation = new Promise<void>((resolve) => {
@@ -406,12 +428,14 @@ describe("post pipeline", () => {
       }),
     };
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
-      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
     });
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const first = pipeline.process(post(-1_001_234_567_890, "First flat", 6));
     const second = pipeline.process(post(-1_001_234_567_890, "Second flat", 7));
 
@@ -429,17 +453,20 @@ describe("post pipeline", () => {
   });
 
   it("does not re-evaluate a Processed Post across pipeline instances sharing a store", async () => {
+    expect.hasAssertions();
     const dedupeStore = openDedupeStore(":memory:");
     const firstEvaluator = {
       evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: false, notes: "No match" })),
     };
     const firstPipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator: firstEvaluator,
-      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
     });
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const firstPost = post(-1_001_234_567_890, "Already processed", 8);
 
     await firstPipeline.process(firstPost);
@@ -448,10 +475,10 @@ describe("post pipeline", () => {
       evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: false, notes: "No match" })),
     };
     const secondPipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator: secondEvaluator,
-      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
     });
 
     await secondPipeline.process(firstPost);
@@ -463,6 +490,7 @@ describe("post pipeline", () => {
   });
 
   it("marks a Post after a failed notification so it is not retried", async () => {
+    expect.hasAssertions();
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
       evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: true, notes: "Looks good" })),
@@ -473,7 +501,7 @@ describe("post pipeline", () => {
       }),
     };
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,

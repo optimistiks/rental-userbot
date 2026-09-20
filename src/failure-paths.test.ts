@@ -20,7 +20,7 @@ const usage = {
 
 function post(id: number, text = "Flat for rent"): Post {
   return {
-    chatId: -1001234567890,
+    chatId: -1_001_234_567_890,
     link: `https://t.me/example/${id}`,
     messageIds: [id],
     photos: [],
@@ -54,6 +54,7 @@ function successModel(notes = "Looks good") {
 
 describe("failure paths", () => {
   it("formats timeout causes, strips ANSI, uses the first line, and caps the message", () => {
+    expect.hasAssertions();
     const timeout = new DOMException("timed out", "TimeoutError");
     expect(
       formatEvaluationError(
@@ -66,13 +67,16 @@ describe("failure paths", () => {
   });
 
   it("retries a persistent model failure and returns one evaluation failure", async () => {
+    expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
       doGenerate: async () => {
         throw new Error("gateway failed");
       },
     });
-    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       {
@@ -91,6 +95,7 @@ describe("failure paths", () => {
   });
 
   it("recovers when the next attempt succeeds", async () => {
+    expect.hasAssertions();
     const files = evaluatorFiles();
     let attempts = 0;
     const model = new MockLanguageModelV4({
@@ -107,7 +112,9 @@ describe("failure paths", () => {
         };
       },
     });
-    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       {
@@ -125,6 +132,7 @@ describe("failure paths", () => {
   });
 
   it("delivers a recovered Match through the pipeline", async () => {
+    expect.hasAssertions();
     const files = evaluatorFiles();
     let attempts = 0;
     const model = new MockLanguageModelV4({
@@ -142,13 +150,17 @@ describe("failure paths", () => {
       },
     });
     const telegram = {
-      sendToMe: vi.fn<(text: string) => Promise<void>>(async () => {}),
+      sendToMe: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),
     };
     const dedupeStore = openDedupeStore(":memory:");
-    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator: createEvaluator(
         { modelId: "test/model", ...files },
@@ -171,6 +183,7 @@ describe("failure paths", () => {
   });
 
   it("counts a run with no output as a failed attempt", async () => {
+    expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
       doGenerate: {
@@ -180,7 +193,9 @@ describe("failure paths", () => {
         warnings: [],
       },
     });
-    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       {
@@ -197,6 +212,7 @@ describe("failure paths", () => {
   });
 
   it("counts a run with invalid structured output as a failed attempt", async () => {
+    expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
       doGenerate: {
@@ -206,7 +222,9 @@ describe("failure paths", () => {
         warnings: [],
       },
     });
-    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       { model, retryPolicy: retryPolicy() },
@@ -221,6 +239,7 @@ describe("failure paths", () => {
   });
 
   it("counts a timed-out run as a failed attempt", async () => {
+    expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
       doGenerate: ({ abortSignal }) =>
@@ -244,7 +263,9 @@ describe("failure paths", () => {
           );
         }),
     });
-    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const evaluator = createEvaluator(
       { modelId: "test/model", ...files },
       {
@@ -262,9 +283,12 @@ describe("failure paths", () => {
   });
 
   it("returns a prompt or Criteria read failure without an agent run or retry", async () => {
+    expect.hasAssertions();
     const files = evaluatorFiles();
     const model = successModel();
-    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const evaluator = createEvaluator(
       {
         criteriaPath: join(tmpdir(), "missing-criteria.md"),
@@ -287,6 +311,7 @@ describe("failure paths", () => {
   });
 
   it("sends one capped warning after persistent failure", async () => {
+    expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
       doGenerate: async () => {
@@ -294,13 +319,17 @@ describe("failure paths", () => {
       },
     });
     const telegram = {
-      sendToMe: vi.fn<(text: string) => Promise<void>>(async () => {}),
+      sendToMe: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),
     };
     const dedupeStore = openDedupeStore(":memory:");
-    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator: createEvaluator(
         { modelId: "test/model", ...files },
@@ -322,6 +351,7 @@ describe("failure paths", () => {
   });
 
   it("logs a failed send, marks the Post, and continues with the next Post", async () => {
+    expect.hasAssertions();
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
       evaluate: vi
@@ -338,10 +368,14 @@ describe("failure paths", () => {
         }
       }),
     };
-    const consoleError = vi.spyOn(console, "error").mockReturnValue(undefined);
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
@@ -364,9 +398,10 @@ describe("failure paths", () => {
   });
 
   it("caps a Match notification at Telegram’s 4096-character limit", async () => {
+    expect.hasAssertions();
     const dedupeStore = openDedupeStore(":memory:");
     const telegram = {
-      sendToMe: vi.fn<(text: string) => Promise<void>>(async () => {}),
+      sendToMe: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),
     };
     const evaluator = {
       evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({
@@ -374,9 +409,11 @@ describe("failure paths", () => {
         notes: "x".repeat(5000),
       })),
     };
-    const log = vi.spyOn(console, "log").mockReturnValue(undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
     const pipeline = createPostPipeline({
-      channelIds: [-1001234567890],
+      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,

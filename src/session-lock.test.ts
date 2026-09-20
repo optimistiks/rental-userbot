@@ -11,6 +11,7 @@ function lockPath(): string {
 
 describe(acquireSessionLock, () => {
   it("refuses a second holder while the first is running", () => {
+    expect.hasAssertions();
     const path = lockPath();
     const first = acquireSessionLock(path);
 
@@ -20,6 +21,7 @@ describe(acquireSessionLock, () => {
   });
 
   it("lets the next process in once the lock is released", () => {
+    expect.hasAssertions();
     const path = lockPath();
     acquireSessionLock(path).release();
 

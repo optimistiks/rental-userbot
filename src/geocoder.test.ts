@@ -27,12 +27,14 @@ describe(precisionForMatchLevel, () => {
     ["city", "area"],
     ["unknown", "area"],
   ] as const)("maps %s to %s", (matchLevel, precision) => {
+    expect.hasAssertions();
     expect(precisionForMatchLevel(matchLevel)).toBe(precision);
   });
 });
 
 describe(createGeocoder, () => {
   it("sends the LocationIQ query and maps results to the tool shape", async () => {
+    expect.hasAssertions();
     server.use(
       http.get("https://geocoder.test/v1/search", ({ request }) => {
         const url = new URL(request.url);
@@ -88,6 +90,7 @@ describe(createGeocoder, () => {
     ["street", "street"],
     ["city", "area"],
   ] as const)("reports %s precision as %s", async (matchLevel, precision) => {
+    expect.hasAssertions();
     server.use(
       http.get("https://geocoder.test/v1/search", () =>
         HttpResponse.json([
@@ -112,6 +115,7 @@ describe(createGeocoder, () => {
   });
 
   it("returns no results for a LocationIQ 404 without exposing the request URL", async () => {
+    expect.hasAssertions();
     server.use(
       http.get("https://geocoder.test/v1/search", () =>
         HttpResponse.json({ error: "Unable to geocode" }, { status: 404 }),
@@ -127,6 +131,7 @@ describe(createGeocoder, () => {
   });
 
   it("throws a redacted provider error for an unauthorized response", async () => {
+    expect.hasAssertions();
     server.use(
       http.get("https://geocoder.test/v1/search", () =>
         HttpResponse.json({ error: "Invalid key" }, { status: 401 }),
@@ -145,6 +150,7 @@ describe(createGeocoder, () => {
   });
 
   it("passes an abort signal through to fetch for the tool timeout", async () => {
+    expect.hasAssertions();
     let signal: AbortSignal | undefined;
     const fetcher = vi.fn<Fetcher>(async (_input, init) => {
       signal = init?.signal ?? undefined;
@@ -165,6 +171,7 @@ describe(createGeocoder, () => {
   });
 
   it("surfaces an aborted delayed request as a provider error", async () => {
+    expect.hasAssertions();
     server.use(
       http.get("https://geocoder.test/v1/search", async () => {
         await delay(100);

@@ -7,6 +7,7 @@ import { readCriteriaFile, readPromptFile } from "./text-file.js";
 
 describe(readCriteriaFile, () => {
   it("reads the criteria text from the configured path", () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const criteriaPath = join(directory, "criteria.md");
     writeFileSync(criteriaPath, "Apartment for long-term rent in Batumi.");
@@ -15,6 +16,7 @@ describe(readCriteriaFile, () => {
   });
 
   it("names the Criteria file when it cannot be read", () => {
+    expect.hasAssertions();
     const criteriaPath = join(tmpdir(), "missing-rental-criteria.md");
 
     expect(() => readCriteriaFile(criteriaPath)).toThrow(
@@ -25,6 +27,7 @@ describe(readCriteriaFile, () => {
 
 describe(readPromptFile, () => {
   it("reads the prompt text from the configured path", () => {
+    expect.hasAssertions();
     const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
     const promptPath = join(directory, "prompt.md");
     writeFileSync(promptPath, "Prompt text");
@@ -33,6 +36,7 @@ describe(readPromptFile, () => {
   });
 
   it("names the Prompt file when it cannot be read", () => {
+    expect.hasAssertions();
     const promptPath = join(tmpdir(), "missing-rental-prompt.md");
 
     expect(() => readPromptFile(promptPath)).toThrow(

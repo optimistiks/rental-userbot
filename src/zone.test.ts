@@ -29,6 +29,7 @@ function writeZone(value: unknown): string {
 
 describe(readZoneFile, () => {
   it("reads a FeatureCollection with Polygon and MultiPolygon features", () => {
+    expect.hasAssertions();
     const path = writeZone({
       features: [
         polygon("Old Batumi"),
@@ -58,6 +59,7 @@ describe(readZoneFile, () => {
   });
 
   it("names a missing, malformed, or empty Zone file", () => {
+    expect.hasAssertions();
     const missingPath = join(tmpdir(), "missing-rental-zone.geojson");
     expect(() => readZoneFile(missingPath)).toThrow(new RegExp(`Zone file .*${missingPath}`, "u"));
 
@@ -110,6 +112,7 @@ describe(readZoneFile, () => {
 
 describe(createZoneChecker, () => {
   it("answers known points from the starting Zone", () => {
+    expect.hasAssertions();
     const checker = createZoneChecker(join(process.cwd(), "data.example/zone.geojson"));
 
     expect(checker.inZone({ lat: 41.6437281, lon: 41.6322006 })).toStrictEqual({
@@ -123,6 +126,7 @@ describe(createZoneChecker, () => {
   });
 
   it("re-reads the Zone file on every call", () => {
+    expect.hasAssertions();
     const path = writeZone({ features: [polygon("First")], type: "FeatureCollection" });
     const checker = createZoneChecker(path);
 

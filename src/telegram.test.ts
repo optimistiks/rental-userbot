@@ -30,14 +30,15 @@ interface FakeMessage {
 
 const settings = {
   apiHash: "hash",
-  apiId: 123456,
+  apiId: 123_456,
 } satisfies Pick<Settings, "apiId" | "apiHash">;
 
 describe("telegram client setup", () => {
   it("uses the persistent session and the specified update settings", () => {
+    expect.hasAssertions();
     expect(telegramClientOptions(settings)).toMatchObject({
       apiHash: "hash",
-      apiId: 123456,
+      apiId: 123_456,
       initConnectionOptions: DEVICE_INFO,
       storage: "data/session.sqlite",
       updates: {
@@ -48,6 +49,7 @@ describe("telegram client setup", () => {
   });
 
   it("sleeps through flood waits instead of dying mid-flood", () => {
+    expect.hasAssertions();
     expect(telegramClientOptions(settings)).toMatchObject({
       network: { middlewares: expect.any(Array) },
     });
@@ -55,6 +57,7 @@ describe("telegram client setup", () => {
   });
 
   it("refuses interactive prompts when starting the daemon", async () => {
+    expect.hasAssertions();
     const start = vi.fn<SessionClient["start"]>(async (params) => {
       await params?.phone?.();
     });
@@ -66,11 +69,14 @@ describe("telegram client setup", () => {
 
 describe("telegram adapter", () => {
   it("starts the Post stream when a handler is registered", () => {
+    expect.hasAssertions();
     const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {},
+      iterDialogs: async function* () {
+        /* No dialogs in this test. */
+      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -85,11 +91,14 @@ describe("telegram adapter", () => {
   });
 
   it("turns a non-service message into a text-only Post", () => {
+    expect.hasAssertions();
     const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {},
+      iterDialogs: async function* () {
+        /* No dialogs in this test. */
+      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -110,7 +119,7 @@ describe("telegram adapter", () => {
     });
 
     expect(handler).toHaveBeenCalledWith({
-      chatId: -1001234567890,
+      chatId: -1_001_234_567_890,
       link: "https://t.me/example/42",
       messageIds: [42],
       photos: [],
@@ -119,11 +128,14 @@ describe("telegram adapter", () => {
   });
 
   it("does not emit service messages", () => {
+    expect.hasAssertions();
     const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {},
+      iterDialogs: async function* () {
+        /* No dialogs in this test. */
+      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -147,6 +159,7 @@ describe("telegram adapter", () => {
   });
 
   it("turns an album into one ordered Post with captions and photo references", async () => {
+    expect.hasAssertions();
     const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const firstThumbnail = { name: "first-y" };
@@ -171,7 +184,9 @@ describe("telegram adapter", () => {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(
         async (location) => location as unknown as Uint8Array,
       ),
-      iterDialogs: async function* () {},
+      iterDialogs: async function* () {
+        /* No dialogs in this test. */
+      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -185,7 +200,7 @@ describe("telegram adapter", () => {
 
     onMessageGroupHandler([
       {
-        chat: { id: -1001234567890 },
+        chat: { id: -1_001_234_567_890 },
         groupedIdUnique: "album-7",
         id: 43,
         isService: false,
@@ -194,7 +209,7 @@ describe("telegram adapter", () => {
         text: "Second caption",
       },
       {
-        chat: { id: -1001234567890 },
+        chat: { id: -1_001_234_567_890 },
         groupedIdUnique: "album-7",
         id: 42,
         isService: false,
@@ -203,7 +218,7 @@ describe("telegram adapter", () => {
         text: "First caption",
       },
       {
-        chat: { id: -1001234567890 },
+        chat: { id: -1_001_234_567_890 },
         groupedIdUnique: "album-7",
         id: 44,
         isService: false,
@@ -217,7 +232,7 @@ describe("telegram adapter", () => {
     const [post] = handler.mock.calls[0];
     expect(post).toMatchObject({
       albumId: "album-7",
-      chatId: -1001234567890,
+      chatId: -1_001_234_567_890,
       link: "https://t.me/example/42",
       messageIds: [42, 43, 44],
       text: "First caption\n\nSecond caption",
@@ -232,11 +247,14 @@ describe("telegram adapter", () => {
   });
 
   it("keeps at most six photos in album message order", () => {
+    expect.hasAssertions();
     const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {},
+      iterDialogs: async function* () {
+        /* No dialogs in this test. */
+      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -254,7 +272,7 @@ describe("telegram adapter", () => {
 
     onMessageGroupHandler(
       photos.map((media, index) => ({
-        chat: { id: -1001234567890 },
+        chat: { id: -1_001_234_567_890 },
         groupedIdUnique: "album-9",
         id: 80 + index,
         isService: false,
@@ -269,6 +287,7 @@ describe("telegram adapter", () => {
   });
 
   it("includes a photo on a single-message Post and skips non-photo media", () => {
+    expect.hasAssertions();
     const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const photo = {
@@ -277,7 +296,9 @@ describe("telegram adapter", () => {
     };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {},
+      iterDialogs: async function* () {
+        /* No dialogs in this test. */
+      },
       onMessageGroup,
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
@@ -290,7 +311,7 @@ describe("telegram adapter", () => {
     ) => void;
 
     onNewMessageHandler({
-      chat: { id: -1001234567890 },
+      chat: { id: -1_001_234_567_890 },
       id: 44,
       isService: false,
       link: "https://t.me/example/44",
@@ -298,7 +319,7 @@ describe("telegram adapter", () => {
       text: "Photo flat",
     });
     onNewMessageHandler({
-      chat: { id: -1001234567890 },
+      chat: { id: -1_001_234_567_890 },
       id: 45,
       isService: false,
       link: "https://t.me/example/45",
@@ -306,7 +327,7 @@ describe("telegram adapter", () => {
       text: "Video flat",
     });
     onNewMessageHandler({
-      chat: { id: -1001234567890 },
+      chat: { id: -1_001_234_567_890 },
       id: 46,
       isService: false,
       link: "https://t.me/example/46",
@@ -320,10 +341,13 @@ describe("telegram adapter", () => {
   });
 
   it("sends to Saved Messages with link previews disabled", async () => {
-    const sendText = vi.fn<TelegramClientLike["sendText"]>(async () => undefined);
+    expect.hasAssertions();
+    const sendText = vi.fn<TelegramClientLike["sendText"]>(() => Promise.resolve());
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {},
+      iterDialogs: async function* () {
+        /* No dialogs in this test. */
+      },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
       onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
       sendText,
@@ -338,10 +362,11 @@ describe("telegram adapter", () => {
   });
 
   it("lists marked IDs for joined channels, including archived dialogs", async () => {
+    expect.hasAssertions();
     const iterDialogs = vi.fn<TelegramClientLike["iterDialogs"]>(async function* iterDialogs() {
-      yield { peer: { chatType: "channel", id: -1001234567890, type: "chat" } };
-      yield { peer: { chatType: "supergroup", id: -1002222222222, type: "chat" } };
-      yield { peer: { chatType: "channel", id: -1009876543210, type: "chat" } };
+      yield { peer: { chatType: "channel", id: -1_001_234_567_890, type: "chat" } };
+      yield { peer: { chatType: "supergroup", id: -1_002_222_222_222, type: "chat" } };
+      yield { peer: { chatType: "channel", id: -1_009_876_543_210, type: "chat" } };
     });
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),

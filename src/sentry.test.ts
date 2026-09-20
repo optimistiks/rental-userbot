@@ -29,6 +29,7 @@ function fakeSentry() {
 
 describe("sentry reporter", () => {
   it("does nothing when SENTRY_DSN is unset", async () => {
+    expect.hasAssertions();
     const sentry = fakeSentry();
     const reporter = createSentryReporter(undefined, sentry);
     const operation = vi.fn(async () => "done");
@@ -42,6 +43,7 @@ describe("sentry reporter", () => {
   });
 
   it("initializes tracing and captures agent inputs and outputs when enabled", async () => {
+    expect.hasAssertions();
     const sentry = fakeSentry();
     const reporter = createSentryReporter("https://public@example.com/1", sentry);
 
@@ -99,6 +101,7 @@ describe("sentry reporter", () => {
   });
 
   it("falls back to disabled reporting if Sentry initialization fails", () => {
+    expect.hasAssertions();
     const sentry = fakeSentry();
     sentry.init.mockImplementation(() => {
       throw new Error("offline");
@@ -110,6 +113,7 @@ describe("sentry reporter", () => {
   });
 
   it("does not let a span lifecycle failure block or duplicate the operation", async () => {
+    expect.hasAssertions();
     const sentry = fakeSentry();
     const operation = vi.fn(async () => "done");
     sentry.startSpan.mockImplementation((_options, callback) => {
@@ -124,6 +128,7 @@ describe("sentry reporter", () => {
   });
 
   it("scrubs credentials and database paths before sending error data", () => {
+    expect.hasAssertions();
     const value =
       "https://eu1.locationiq.com/v1/search?key=secret&x=1 Authorization: Bearer key data/session.sqlite";
 
