@@ -54,8 +54,8 @@ async function runDaemon(
     const { createEvaluator, createEvaluatorTools } = await import("./evaluator.js");
     client = makeClient(settings);
     await startDaemonSession(client);
-    const telegram = createTelegramAdapter(client);
     const watchlist = createWatchlist(settings.channelsPath);
+    const telegram = createTelegramAdapter(client, () => watchlist.channelIds());
     const notices = createNotices({
       channelsPath: settings.channelsPath,
       criteriaPath: settings.criteriaPath,

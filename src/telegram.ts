@@ -4,6 +4,7 @@ import { TelegramClient, networkMiddlewares } from "@mtcute/node";
 
 import type { LoginSettings, Settings } from "./config.js";
 
+import { isWatchedPost } from "./channel-filter.js";
 import { MAX_PHOTOS } from "./config.js";
 
 const SESSION_PATH = "data/session.sqlite";
@@ -104,7 +105,10 @@ async function startDaemonSession(client: SessionClient): Promise<void> {
   await client.start(daemonStartParams);
 }
 
-function createTelegramAdapter(client: TelegramClientLike): Telegram {
+function createTelegramAdapter(
+  client: TelegramClientLike,
+  channelIds: () => readonly number[],
+): Telegram {
   const postHandlers: ((post: Post) => void)[] = [];
   const photoLocations = new WeakMap<object, FileDownloadLocation>();
   let postStreamStarted = false;
@@ -133,6 +137,11 @@ function createTelegramAdapter(client: TelegramClientLike): Telegram {
     }
 
     const [firstMessage] = postMessages;
+    // Applied before Message.link: a user chat has no permalink and mtcute throws, restarting the updates loop.
+    if (!isWatchedPost({ chatId: firstMessage.chat.id }, channelIds())) {
+      return;
+    }
+
     const albumId = firstMessage.groupedIdUnique;
     const post: Post = {
       chatId: firstMessage.chat.id,

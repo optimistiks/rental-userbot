@@ -33,6 +33,12 @@ const settings = {
   apiId: 123_456,
 } satisfies Pick<Settings, "apiId" | "apiHash">;
 
+const WATCHED_CHANNEL_ID = -1_001_234_567_890;
+
+function watchedChannelIds(): readonly number[] {
+  return [WATCHED_CHANNEL_ID];
+}
+
 /** A photo thumbnail mock that only answers for one requested size. */
 function thumbnailForSize(
   wanted: string,
@@ -110,7 +116,7 @@ describe("telegram adapter", () => {
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
-    const telegram = createTelegramAdapter(client);
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
     const handler = vi.fn<(post: Post) => void>();
 
     telegram.onPost(handler);
@@ -129,7 +135,7 @@ describe("telegram adapter", () => {
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
-    const telegram = createTelegramAdapter(client);
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
     const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
     const onNewMessageHandler = onNewMessage.add.mock.calls[0][0] as unknown as (
@@ -163,7 +169,7 @@ describe("telegram adapter", () => {
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
-    const telegram = createTelegramAdapter(client);
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
     const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
     const onNewMessageHandler = onNewMessage.add.mock.calls[0][0] as unknown as (
@@ -179,6 +185,70 @@ describe("telegram adapter", () => {
     });
 
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("does not emit a message from a chat that is not on the Watchlist", () => {
+    expect.hasAssertions();
+    const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
+    const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
+    const client = {
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
+      onMessageGroup,
+      onNewMessage,
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
+    };
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
+    const handler = vi.fn<(post: Post) => void>();
+    telegram.onPost(handler);
+    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0] as unknown as (
+      message: FakeMessage,
+    ) => void;
+
+    expect(() => {
+      onNewMessageHandler({
+        chat: { id: 323_576_467 },
+        id: 1,
+        isService: false,
+        get link(): string {
+          throw new Error("Cannot generate message link for user");
+        },
+        text: "hello",
+      });
+    }).not.toThrow();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("re-reads the Watchlist for each message", () => {
+    expect.hasAssertions();
+    let channelIds: number[] = [];
+    const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
+    const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
+    const client = {
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
+      onMessageGroup,
+      onNewMessage,
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
+    };
+    const telegram = createTelegramAdapter(client, () => channelIds);
+    const handler = vi.fn<(post: Post) => void>();
+    telegram.onPost(handler);
+    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0] as unknown as (
+      message: FakeMessage,
+    ) => void;
+    const message = {
+      chat: { id: WATCHED_CHANNEL_ID },
+      id: 42,
+      isService: false,
+      link: "https://t.me/example/42",
+      text: "Flat for rent",
+    };
+
+    onNewMessageHandler(message);
+    expect(handler).not.toHaveBeenCalled();
+
+    channelIds = [WATCHED_CHANNEL_ID];
+    onNewMessageHandler(message);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
   it("turns an album into one ordered Post with captions and photo references", async () => {
@@ -211,7 +281,7 @@ describe("telegram adapter", () => {
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
-    const telegram = createTelegramAdapter(client);
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
     const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
     const onMessageGroupHandler = onMessageGroup.add.mock.calls[0][0] as unknown as (
@@ -276,7 +346,7 @@ describe("telegram adapter", () => {
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
-    const telegram = createTelegramAdapter(client);
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
     const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
     const photos = Array.from({ length: 7 }, (_, index) => ({
@@ -317,7 +387,7 @@ describe("telegram adapter", () => {
       onNewMessage,
       sendText: vi.fn<TelegramClientLike["sendText"]>(),
     };
-    const telegram = createTelegramAdapter(client);
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
     const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
     const onNewMessageHandler = onNewMessage.add.mock.calls[0][0] as unknown as (
@@ -357,7 +427,7 @@ describe("telegram adapter", () => {
   it("tags a Saved Messages write and disables its link preview", async () => {
     expect.hasAssertions();
     const { client, sendText } = clientWithSendSpy();
-    const telegram = createTelegramAdapter(client);
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
 
     await telegram.sendToMe("https://t.me/example/1\nLooks good");
 
@@ -371,7 +441,7 @@ describe("telegram adapter", () => {
   it("caps a tagged write at Telegram's message length limit", async () => {
     expect.hasAssertions();
     const { client, sendText } = clientWithSendSpy();
-    const telegram = createTelegramAdapter(client);
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
 
     await telegram.sendToMe("x".repeat(5000));
 
