@@ -178,5 +178,7 @@ pnpm typecheck
 Tests run fully offline: the model is a scripted mock, the geocoder is mocked HTTP, and the database is
 in-memory. They cover the plumbing; whether the agent judges flats well is checked by hand.
 
-The design lives in `.scratch/rental-userbot/`: `spec.md` is what was built, `map.md` indexes the decisions
-behind it, and `CONTEXT.md` at the repo root defines the vocabulary.
+`CONTEXT.md` at the repo root defines the vocabulary the code and these docs use. `docs/adr/` records the
+handful of decisions a reader would otherwise wonder about: why the bot never catches up on posts it missed,
+why it notifies before marking a post done, why the agent's verdict is final, why nothing restarts it, and
+why everything you tune is a file.

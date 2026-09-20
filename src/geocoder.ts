@@ -32,6 +32,11 @@ interface LocationIqResult {
 
 type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
+/* `matchlevel` and not the better-named `matchcode`: LocationIQ reports how good the
+   match was, not how precise it is. A house number that does not exist comes back as
+   matchlevel "street" with matchcode "exact", and a misspelled street comes back HTTP
+   200 at matchlevel "city" — the Batumi centroid — rather than as a miss. Only the
+   level says whether a point is worth checking against the Zone. */
 function precisionForMatchLevel(matchLevel: unknown): GeocodePrecision {
   switch (matchLevel) {
     case "building": {
