@@ -5,15 +5,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
 import type { ClientFactory } from "./main.js";
-import type { SessionClient, TelegramClientLike } from "./telegram.js";
+import type { SessionLock } from "./session-lock.js";
+import type { SessionClient, DialogLike, TelegramClientLike } from "./telegram.js";
 
 import { runDaemon, runLogin } from "./main.js";
 
 const loginSettings = { apiHash: "hash", apiId: 123_456 };
 
-function noLock() {
+function noLock(): SessionLock {
   return {
-    release: () => {
+    release: (): void => {
       /* Nothing to release in tests. */
     },
   };
@@ -27,7 +28,7 @@ describe(runLogin, () => {
     const makeClient = vi.fn<ClientFactory>(() => ({
       destroy,
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         /* No dialogs in this test. */
       },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
@@ -40,7 +41,7 @@ describe(runLogin, () => {
 
     expect(makeClient).toHaveBeenCalledWith(loginSettings);
     expect(start).toHaveBeenCalledWith();
-    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledOnce();
   });
 });
 
@@ -66,7 +67,7 @@ describe(runDaemon, () => {
     const client = {
       destroy: vi.fn<() => Promise<void>>(() => Promise.resolve()),
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         events.push("dialogs");
         yield { peer: { type: "chat", chatType: "channel", id: -1_001_234_567_890 } };
       },
@@ -108,7 +109,7 @@ describe(runDaemon, () => {
     const client = {
       destroy: vi.fn<() => Promise<void>>(() => Promise.resolve()),
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         yield { peer: { type: "chat", chatType: "channel", id: -1_001_234_567_890 } };
       },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
@@ -122,6 +123,6 @@ describe(runDaemon, () => {
     await expect(
       runDaemon(settings, () => client, join(directory, "bot.sqlite"), undefined, noLock()),
     ).rejects.toThrow("Saved Messages unavailable");
-    expect(client.destroy).toHaveBeenCalledTimes(1);
+    expect(client.destroy).toHaveBeenCalledOnce();
   });
 });

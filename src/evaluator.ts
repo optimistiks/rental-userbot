@@ -1,6 +1,6 @@
 import type { LanguageModel } from "ai";
 
-import { generateText, isStepCount, Output, tool } from "ai";
+import { Output, generateText, isStepCount, tool } from "ai";
 import { z } from "zod";
 
 import type { GeocodeResponse } from "./geocoder.js";
@@ -61,7 +61,7 @@ interface RetryPolicy {
 
 const DEFAULT_RETRY_POLICY: RetryPolicy = {
   attempts: 3,
-  backoffsMs: [2_000, 4_000],
+  backoffsMs: [2000, 4000],
   maxSteps: 8,
   timeoutMs: 180_000,
 };

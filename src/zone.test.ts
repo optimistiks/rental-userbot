@@ -34,10 +34,7 @@ describe(readZoneFile, () => {
       features: [
         polygon("Old Batumi"),
         {
-          type: "Feature",
-          properties: { name: "Rustaveli" },
           geometry: {
-            type: "MultiPolygon",
             coordinates: [
               [
                 [
@@ -49,7 +46,10 @@ describe(readZoneFile, () => {
                 ],
               ],
             ],
+            type: "MultiPolygon",
           },
+          properties: { name: "Rustaveli" },
+          type: "Feature",
         },
       ],
       type: "FeatureCollection",
@@ -72,7 +72,7 @@ describe(readZoneFile, () => {
 
     const pointPath = writeZone({
       features: [
-        { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [0, 0] } },
+        { geometry: { coordinates: [0, 0], type: "Point" }, properties: {}, type: "Feature" },
       ],
       type: "FeatureCollection",
     });
@@ -81,10 +81,7 @@ describe(readZoneFile, () => {
     const openRingPath = writeZone({
       features: [
         {
-          type: "Feature",
-          properties: {},
           geometry: {
-            type: "Polygon",
             coordinates: [
               [
                 [0, 0],
@@ -92,7 +89,10 @@ describe(readZoneFile, () => {
                 [1, 1],
               ],
             ],
+            type: "Polygon",
           },
+          properties: {},
+          type: "Feature",
         },
       ],
       type: "FeatureCollection",
@@ -102,7 +102,7 @@ describe(readZoneFile, () => {
     const mixedInvalidPath = writeZone({
       features: [
         polygon("Valid"),
-        { type: "Feature", properties: {}, geometry: { type: "Polygon" } },
+        { geometry: { type: "Polygon" }, properties: {}, type: "Feature" },
       ],
       type: "FeatureCollection",
     });

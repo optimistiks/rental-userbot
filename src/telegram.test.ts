@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
-import type { Post, SessionClient, TelegramClientLike } from "./telegram.js";
+import type { Post, SessionClient, DialogLike, TelegramClientLike } from "./telegram.js";
 
 import {
   DEVICE_INFO,
@@ -74,7 +74,7 @@ describe("telegram adapter", () => {
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         /* No dialogs in this test. */
       },
       onMessageGroup,
@@ -86,8 +86,8 @@ describe("telegram adapter", () => {
 
     telegram.onPost(handler);
 
-    expect(onNewMessage.add).toHaveBeenCalledTimes(1);
-    expect(onMessageGroup.add).toHaveBeenCalledTimes(1);
+    expect(onNewMessage.add).toHaveBeenCalledOnce();
+    expect(onMessageGroup.add).toHaveBeenCalledOnce();
   });
 
   it("turns a non-service message into a text-only Post", () => {
@@ -96,7 +96,7 @@ describe("telegram adapter", () => {
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         /* No dialogs in this test. */
       },
       onMessageGroup,
@@ -133,7 +133,7 @@ describe("telegram adapter", () => {
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         /* No dialogs in this test. */
       },
       onMessageGroup,
@@ -184,7 +184,7 @@ describe("telegram adapter", () => {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(
         async (location) => location as unknown as Uint8Array,
       ),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         /* No dialogs in this test. */
       },
       onMessageGroup,
@@ -228,7 +228,7 @@ describe("telegram adapter", () => {
       },
     ]);
 
-    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledOnce();
     const [post] = handler.mock.calls[0];
     expect(post).toMatchObject({
       albumId: "album-7",
@@ -252,7 +252,7 @@ describe("telegram adapter", () => {
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         /* No dialogs in this test. */
       },
       onMessageGroup,
@@ -282,7 +282,7 @@ describe("telegram adapter", () => {
       })),
     );
 
-    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledOnce();
     expect(handler.mock.calls[0][0].photos).toHaveLength(6);
   });
 
@@ -296,7 +296,7 @@ describe("telegram adapter", () => {
     };
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         /* No dialogs in this test. */
       },
       onMessageGroup,
@@ -345,7 +345,7 @@ describe("telegram adapter", () => {
     const sendText = vi.fn<TelegramClientLike["sendText"]>(() => Promise.resolve());
     const client = {
       downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
-      iterDialogs: async function* () {
+      async *iterDialogs(): AsyncGenerator<DialogLike> {
         /* No dialogs in this test. */
       },
       onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },

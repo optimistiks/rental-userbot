@@ -4,10 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import type { EvaluationFailure } from "./evaluator.js";
-import type { Evaluator } from "./evaluator.js";
-import type { Post } from "./telegram.js";
-import type { Telegram } from "./telegram.js";
+import type { EvaluationFailure, Evaluator, RetryPolicy } from "./evaluator.js";
+import type { Post, Telegram } from "./telegram.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
 import { createEvaluator, formatEvaluationError } from "./evaluator.js";
@@ -37,11 +35,11 @@ function evaluatorFiles(): { promptPath: string; criteriaPath: string } {
   return { criteriaPath, promptPath };
 }
 
-function retryPolicy(timeoutMs = 100) {
+function retryPolicy(timeoutMs = 100): RetryPolicy {
   return { attempts: 3, backoffsMs: [0, 0], maxSteps: 8, timeoutMs };
 }
 
-function successModel(notes = "Looks good") {
+function successModel(notes = "Looks good"): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     doGenerate: {
       content: [{ text: JSON.stringify({ match: true, notes }), type: "text" }],
@@ -306,7 +304,7 @@ describe("failure paths", () => {
       kind: "evaluation-failure",
     });
     expect(model.doGenerateCalls).toHaveLength(0);
-    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledOnce();
     consoleError.mockRestore();
   });
 
@@ -340,7 +338,7 @@ describe("failure paths", () => {
 
     await pipeline.process(post(5));
 
-    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
+    expect(telegram.sendToMe).toHaveBeenCalledOnce();
     expect(telegram.sendToMe).toHaveBeenCalledWith(
       "https://t.me/example/5\n⚠️ couldn't evaluate: Error: model unavailable",
     );
@@ -423,7 +421,7 @@ describe("failure paths", () => {
 
     await pipeline.process(post(8));
 
-    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
+    expect(telegram.sendToMe).toHaveBeenCalledOnce();
     expect(telegram.sendToMe.mock.calls[0]?.[0]).toHaveLength(4096);
     log.mockRestore();
     dedupeStore.close();

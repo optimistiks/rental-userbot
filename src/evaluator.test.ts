@@ -39,8 +39,8 @@ describe("evaluator", () => {
         throw new Error("gateway failed");
       },
     });
-    // vitest's Mock<T> cannot carry a generic signature, so run is mocked at
-    // the instantiation the Evaluator actually uses and widened back once.
+    // Vitest's Mock<T> cannot carry a generic signature, so run is mocked at
+    // The instantiation the Evaluator actually uses and widened back once.
     const run = vi.fn<(postLink: string, operation: () => Promise<unknown>) => Promise<unknown>>(
       async (_link, operation) => operation(),
     );

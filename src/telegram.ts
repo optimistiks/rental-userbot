@@ -79,7 +79,7 @@ function telegramClientOptions(
     initConnectionOptions: DEVICE_INFO,
     network: {
       middlewares: networkMiddlewares.basic({
-        floodWaiter: { maxWait: MAX_FLOOD_WAIT_MS, maxRetries: MAX_FLOOD_RETRIES },
+        floodWaiter: { maxRetries: MAX_FLOOD_RETRIES, maxWait: MAX_FLOOD_WAIT_MS },
       }),
     },
     storage: SESSION_PATH,
@@ -95,15 +95,9 @@ function createTelegramClient(settings: Pick<Settings, "apiId" | "apiHash">): Te
 }
 
 const daemonStartParams = {
-  code: async (): Promise<string> => {
-    throw new Error("run login first");
-  },
-  password: async (): Promise<string> => {
-    throw new Error("run login first");
-  },
-  phone: async (): Promise<string> => {
-    throw new Error("run login first");
-  },
+  code: (): Promise<string> => Promise.reject(new Error("run login first")),
+  password: (): Promise<string> => Promise.reject(new Error("run login first")),
+  phone: (): Promise<string> => Promise.reject(new Error("run login first")),
 };
 
 interface SessionClient {
@@ -217,6 +211,7 @@ export {
   MAX_FLOOD_WAIT_MS,
   MAX_FLOOD_RETRIES,
   DEVICE_INFO,
+  type DialogLike,
   type PhotoRef,
   type Post,
   type Telegram,

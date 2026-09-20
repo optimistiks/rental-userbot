@@ -82,6 +82,12 @@
       {
         "max": 2
       }
+    ],
+    "vitest/max-expects": [
+      "error",
+      {
+        "max": 10
+      }
     ]
   },
   "ignorePatterns": [

@@ -243,7 +243,7 @@ describe("post pipeline", () => {
     await pipeline.process(post(-1_009_876_543_210, "Unwatched flat", 3));
     await pipeline.process(post(-1_001_234_567_890, "", 4));
 
-    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
+    expect(telegram.sendToMe).toHaveBeenCalledOnce();
     expect(telegram.sendToMe).toHaveBeenCalledWith("https://t.me/example/1\nLooks good");
     expect(model.doGenerateCalls).toHaveLength(2);
     expect(log).toHaveBeenCalledWith("post https://t.me/example/1: Match — Looks good");
@@ -312,7 +312,7 @@ describe("post pipeline", () => {
 
     expect(downloadPhoto).toHaveBeenCalledTimes(2);
     expect(model.doGenerateCalls).toHaveLength(1);
-    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
+    expect(telegram.sendToMe).toHaveBeenCalledOnce();
     expect(telegram.sendToMe).toHaveBeenCalledWith("https://t.me/example/60\nLooks good");
     log.mockRestore();
     dedupeStore.close();
@@ -395,12 +395,12 @@ describe("post pipeline", () => {
     const duplicate = pipeline.process(post(-1_001_234_567_890, "Flat for rent", 5));
 
     await vi.waitFor(() => {
-      expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+      expect(evaluator.evaluate).toHaveBeenCalledOnce();
     });
     releaseFirst();
     await Promise.all([first, duplicate]);
 
-    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+    expect(evaluator.evaluate).toHaveBeenCalledOnce();
     expect(dedupeStore.isProcessed("-1001234567890:5")).toBe(true);
     log.mockRestore();
     dedupeStore.close();
@@ -444,7 +444,7 @@ describe("post pipeline", () => {
     const second = pipeline.process(post(-1_001_234_567_890, "Second flat", 7));
 
     await vi.waitFor(() => {
-      expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+      expect(evaluator.evaluate).toHaveBeenCalledOnce();
     });
     expect(evaluationOrder).toStrictEqual([6]);
     releaseFirst();
@@ -491,7 +491,7 @@ describe("post pipeline", () => {
 
     await secondPipeline.process(firstPost);
 
-    expect(firstEvaluator.evaluate).toHaveBeenCalledTimes(1);
+    expect(firstEvaluator.evaluate).toHaveBeenCalledOnce();
     expect(secondEvaluator.evaluate).not.toHaveBeenCalled();
     log.mockRestore();
     dedupeStore.close();
@@ -521,8 +521,8 @@ describe("post pipeline", () => {
     await expect(pipeline.process(postToProcess)).resolves.toBeUndefined();
     await pipeline.process(postToProcess);
 
-    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
-    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
+    expect(evaluator.evaluate).toHaveBeenCalledOnce();
+    expect(telegram.sendToMe).toHaveBeenCalledOnce();
     expect(dedupeStore.isProcessed("-1001234567890:9")).toBe(true);
     dedupeStore.close();
   });

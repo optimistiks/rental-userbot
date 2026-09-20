@@ -65,11 +65,11 @@ async function runDaemon(
       errorReporter,
       evaluator: createEvaluator(settings, {
         downloadPhoto: telegram.downloadPhoto,
+        errorReporter,
         tools: createEvaluatorTools({
           geocode: (query, signal) => geocoder.geocode(query, signal),
           inZone: (point) => zoneChecker.inZone(point),
         }),
-        errorReporter,
       }),
       telegram,
     });

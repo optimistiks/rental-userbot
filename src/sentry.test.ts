@@ -22,13 +22,13 @@ function fakeSentry() {
       events.push("init");
       return undefined as ReturnType<SentryApi["init"]>;
     }),
-    get initOptions() {
+    get initOptions(): Record<string, unknown> | undefined {
       return initOptions;
     },
     scopeContext,
     // Sentry types startSpan and withScope generically and vitest's Mock cannot
-    // carry a type parameter, so both are mocked at the shape the reporter uses
-    // and the object is widened to SentryApi where it is handed over.
+    // Carry a type parameter, so both are mocked at the shape the reporter uses
+    // And the object is widened to SentryApi where it is handed over.
     startSpan: vi.fn<(options: unknown, callback: (span: unknown) => unknown) => unknown>(
       (_options, callback) => callback({}),
     ),
@@ -48,7 +48,7 @@ describe("sentry reporter", () => {
     await expect(reporter.run("https://t.me/example/1", operation)).resolves.toBe("done");
 
     expect(reporter.enabled).toBe(false);
-    expect(operation).toHaveBeenCalledTimes(1);
+    expect(operation).toHaveBeenCalledOnce();
     expect(sentry.init).not.toHaveBeenCalled();
     expect(sentry.startSpan).not.toHaveBeenCalled();
   });
@@ -143,7 +143,7 @@ describe("sentry reporter", () => {
     );
 
     await expect(reporter.run("https://t.me/example/3", operation)).resolves.toBe("done");
-    expect(operation).toHaveBeenCalledTimes(1);
+    expect(operation).toHaveBeenCalledOnce();
   });
 
   it("scrubs credentials and database paths before sending error data", () => {
