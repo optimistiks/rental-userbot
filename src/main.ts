@@ -1,3 +1,5 @@
+/* Composition root: every daemon collaborator is constructed here. */
+// oxlint-disable import/max-dependencies
 import type { LoginSettings, Settings } from "./config.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { SessionLock } from "./session-lock.js";
@@ -6,6 +8,7 @@ import type { SessionClient, TelegramClientLike } from "./telegram.js";
 import { readLoginSettings, readSettings } from "./config.js";
 import { errorMessage } from "./errors.js";
 import { createGeocoder } from "./geocoder.js";
+import { createNotices } from "./notices.js";
 import { createPostPipeline } from "./pipeline.js";
 import { initializeSentry } from "./sentry.js";
 import { acquireSessionLock } from "./session-lock.js";
@@ -53,6 +56,12 @@ async function runDaemon(
     await startDaemonSession(client);
     const telegram = createTelegramAdapter(client);
     const watchlist = createWatchlist(settings.channelsPath);
+    const notices = createNotices({
+      channelsPath: settings.channelsPath,
+      criteriaPath: settings.criteriaPath,
+      promptPath: settings.promptPath,
+      zonePath: settings.zonePath,
+    });
     await announceStartup(telegram, watchlist.channelIds());
     const geocoder = createGeocoder({
       token: settings.locationIqToken,
@@ -70,6 +79,7 @@ async function runDaemon(
           inZone: (point) => zoneChecker.inZone(point),
         }),
       }),
+      notices,
       telegram,
       watchlist,
     });

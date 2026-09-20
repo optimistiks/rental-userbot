@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { EvaluationFailure, Evaluator, RetryPolicy } from "./evaluator.js";
-import type { Post, Telegram } from "./telegram.js";
+import type { PhotoRef, Post, Telegram } from "./telegram.js";
 import type { Watchlist } from "./watchlist.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
@@ -28,12 +28,16 @@ const usage = {
   outputTokens: { reasoning: undefined, text: 5, total: 5 },
 };
 
+function photo(): PhotoRef {
+  return { __photoRef: true };
+}
+
 function post(id: number, text = "Flat for rent"): Post {
   return {
     chatId: -1_001_234_567_890,
     link: `https://t.me/example/${id}`,
     messageIds: [id],
-    photos: [],
+    photos: [photo(), photo(), photo()],
     text,
   };
 }

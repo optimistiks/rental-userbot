@@ -10,7 +10,7 @@ type SentryApi = Pick<
   | "withScope"
 >;
 
-type ErrorPhase = "evaluation" | "notification" | "pipeline";
+type ErrorPhase = "evaluation" | "notice" | "notification" | "pipeline";
 
 interface ErrorContext {
   postLink?: string;

@@ -277,6 +277,83 @@ describe("evaluator", () => {
     log.mockRestore();
   });
 
+  it("logs a collapsed preview of the whole thought, not only the heading", async () => {
+    expect.hasAssertions();
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
+    writeFileSync(promptPath, "Prompt");
+    writeFileSync(criteriaPath, "Criteria");
+    const model = new MockLanguageModelV4({
+      doGenerate: {
+        content: [
+          {
+            text: "**My Thought Process**\n\nThe photos show a hillside cottage, not Old Town.",
+            type: "reasoning",
+          },
+          {
+            text: JSON.stringify({ match: false, notes: "Outside the Zone" }),
+            type: "text",
+          },
+        ],
+        finishReason: { raw: undefined, unified: "stop" },
+        usage,
+        warnings: [],
+      },
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const evaluator = createEvaluator(
+      { criteriaPath, modelId: "test/model", promptPath },
+      { model },
+    );
+
+    await expect(
+      evaluator.evaluate({ link: "https://t.me/example/90", text: "Flat" }),
+    ).resolves.toStrictEqual({ match: false, notes: "Outside the Zone" });
+
+    expect(log).toHaveBeenCalledWith(
+      "post https://t.me/example/90: thinking — **My Thought Process** The photos show a hillside cottage, not Old Town.",
+    );
+    log.mockRestore();
+  });
+
+  it("caps a long thought preview at 300 characters", async () => {
+    expect.hasAssertions();
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
+    writeFileSync(promptPath, "Prompt");
+    writeFileSync(criteriaPath, "Criteria");
+    const body = `${"x".repeat(300)}Y`;
+    const model = new MockLanguageModelV4({
+      doGenerate: {
+        content: [
+          { text: body, type: "reasoning" },
+          { text: JSON.stringify({ match: false, notes: "No" }), type: "text" },
+        ],
+        finishReason: { raw: undefined, unified: "stop" },
+        usage,
+        warnings: [],
+      },
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const evaluator = createEvaluator(
+      { criteriaPath, modelId: "test/model", promptPath },
+      { model },
+    );
+
+    await evaluator.evaluate({ link: "https://t.me/example/91", text: "Flat" });
+
+    expect(log).toHaveBeenCalledWith(
+      `post https://t.me/example/91: thinking — ${"x".repeat(300)}…`,
+    );
+    log.mockRestore();
+  });
+
   it("re-reads the prompt and Criteria and returns the structured Verdict", async () => {
     expect.hasAssertions();
     const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));

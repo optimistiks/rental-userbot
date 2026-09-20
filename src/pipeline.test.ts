@@ -2,7 +2,7 @@
    the cap for this file; the alternative is a stub, which cannot prove a re-read. */
 // oxlint-disable import/max-dependencies
 import { MockLanguageModelV4 } from "ai/test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -19,6 +19,7 @@ import type { Watchlist } from "./watchlist.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
 import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
+import { createNotices } from "./notices.js";
 import { createPostPipeline } from "./pipeline.js";
 import { createWatchlist } from "./watchlist.js";
 
@@ -29,17 +30,109 @@ const usage = {
 
 const staticWatchlist: Watchlist = { channelIds: () => [-1_001_234_567_890] };
 
-function post(chatId: number, text: string, id: number): Post {
+function photo(): PhotoRef {
+  return { __photoRef: true };
+}
+
+function post(
+  chatId: number,
+  text: string,
+  id: number,
+  photos: PhotoRef[] = [photo(), photo(), photo()],
+): Post {
   return {
     chatId,
     link: `https://t.me/example/${id}`,
     messageIds: [id],
-    photos: [],
+    photos,
     text,
   };
 }
 
 describe("post pipeline", () => {
+  it("ignores a Post that is not a Listing and does not mark it processed", async () => {
+    expect.hasAssertions();
+    const dedupeStore = openDedupeStore(":memory:");
+    const evaluator = {
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: true, notes: "Should not run" }),
+      ),
+    };
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const pipeline = createPostPipeline({
+      dedupeStore,
+      evaluator,
+      telegram,
+      watchlist: staticWatchlist,
+    });
+
+    await pipeline.process(post(-1_001_234_567_890, "", 80, [photo()]));
+
+    expect(evaluator.evaluate).not.toHaveBeenCalled();
+    expect(telegram.sendToMe).not.toHaveBeenCalled();
+    expect(dedupeStore.isProcessed("-1001234567890:80")).toBe(false);
+    expect(log).toHaveBeenCalledWith("post https://t.me/example/80: skipped — 1 photo, no text");
+    log.mockRestore();
+    dedupeStore.close();
+  });
+
+  it("ignores a Post with text but fewer than three photos", async () => {
+    expect.hasAssertions();
+    const dedupeStore = openDedupeStore(":memory:");
+    const evaluator = {
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: true, notes: "Should not run" }),
+      ),
+    };
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const pipeline = createPostPipeline({
+      dedupeStore,
+      evaluator,
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      watchlist: staticWatchlist,
+    });
+
+    await pipeline.process(post(-1_001_234_567_890, "Сдается квартира Батуми", 81, [photo()]));
+
+    expect(evaluator.evaluate).not.toHaveBeenCalled();
+    expect(dedupeStore.isProcessed("-1001234567890:81")).toBe(false);
+    expect(log).toHaveBeenCalledWith("post https://t.me/example/81: skipped — 1 photo");
+    log.mockRestore();
+    dedupeStore.close();
+  });
+
+  it("ignores a Post with three photos but no text", async () => {
+    expect.hasAssertions();
+    const dedupeStore = openDedupeStore(":memory:");
+    const evaluator = {
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: true, notes: "Should not run" }),
+      ),
+    };
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const pipeline = createPostPipeline({
+      dedupeStore,
+      evaluator,
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      watchlist: staticWatchlist,
+    });
+
+    await pipeline.process(post(-1_001_234_567_890, "", 82));
+
+    expect(evaluator.evaluate).not.toHaveBeenCalled();
+    expect(dedupeStore.isProcessed("-1001234567890:82")).toBe(false);
+    expect(log).toHaveBeenCalledWith("post https://t.me/example/82: skipped — 3 photos, no text");
+    log.mockRestore();
+    dedupeStore.close();
+  });
+
   it("still notifies and marks the Post when the Evaluator throws", async () => {
     expect.hasAssertions();
     const errorReporter: ErrorReporter = {
@@ -246,14 +339,14 @@ describe("post pipeline", () => {
     await pipeline.process(post(-1_001_234_567_890, "Flat for rent", 1));
     await pipeline.process(post(-1_001_234_567_890, "Another flat", 2));
     await pipeline.process(post(-1_009_876_543_210, "Unwatched flat", 3));
-    await pipeline.process(post(-1_001_234_567_890, "", 4));
+    await pipeline.process(post(-1_001_234_567_890, "", 4, []));
 
     expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe).toHaveBeenCalledWith("https://t.me/example/1\nLooks good");
     expect(model.doGenerateCalls).toHaveLength(2);
     expect(log).toHaveBeenCalledWith("post https://t.me/example/1: Match — Looks good");
     expect(log).toHaveBeenCalledWith("post https://t.me/example/2: No match — Too expensive");
-    expect(log).toHaveBeenCalledWith("post https://t.me/example/4: dropped empty Post");
+    expect(log).toHaveBeenCalledWith("post https://t.me/example/4: skipped — 0 photos, no text");
     log.mockRestore();
     dedupeStore.close();
   });
@@ -265,8 +358,9 @@ describe("post pipeline", () => {
     const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
-    const firstPhoto = { __photoRef: true } as PhotoRef;
-    const secondPhoto = { __photoRef: true } as PhotoRef;
+    const firstPhoto = photo();
+    const secondPhoto = photo();
+    const thirdPhoto = photo();
     const model = new MockLanguageModelV4({
       doGenerate: {
         content: [{ text: JSON.stringify({ match: true, notes: "Looks good" }), type: "text" }],
@@ -278,7 +372,8 @@ describe("post pipeline", () => {
     const downloadPhoto = vi
       .fn<(photo: PhotoRef) => Promise<Uint8Array>>()
       .mockResolvedValueOnce(new Uint8Array([1]))
-      .mockResolvedValueOnce(new Uint8Array([2]));
+      .mockResolvedValueOnce(new Uint8Array([2]))
+      .mockResolvedValueOnce(new Uint8Array([3]));
     const telegram = {
       downloadPhoto,
       sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
@@ -303,7 +398,7 @@ describe("post pipeline", () => {
       chatId: -1_001_234_567_890,
       link: "https://t.me/example/60",
       messageIds: [60, 61],
-      photos: [firstPhoto, secondPhoto],
+      photos: [firstPhoto, secondPhoto, thirdPhoto],
       text: "Flat with a balcony",
     });
     await pipeline.process({
@@ -315,7 +410,7 @@ describe("post pipeline", () => {
       text: "Late album part",
     });
 
-    expect(downloadPhoto).toHaveBeenCalledTimes(2);
+    expect(downloadPhoto).toHaveBeenCalledTimes(3);
     expect(model.doGenerateCalls).toHaveLength(1);
     expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe).toHaveBeenCalledWith("https://t.me/example/60\nLooks good");
@@ -323,17 +418,18 @@ describe("post pipeline", () => {
     dedupeStore.close();
   });
 
-  it("marks a textless Post processed without an agent run when every photo fails", async () => {
+  it("still evaluates a Listing when photo downloads fail", async () => {
     expect.hasAssertions();
     const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
     const promptPath = path.join(directory, "prompt.md");
     const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
-    const photo = { __photoRef: true } as PhotoRef;
     const model = new MockLanguageModelV4({
       doGenerate: {
-        content: [{ text: JSON.stringify({ match: true, notes: "Should not run" }), type: "text" }],
+        content: [
+          { text: JSON.stringify({ match: false, notes: "No photos left" }), type: "text" },
+        ],
         finishReason: { raw: undefined, unified: "stop" },
         usage,
         warnings: [],
@@ -347,30 +443,27 @@ describe("post pipeline", () => {
       { criteriaPath, modelId: "test/model", promptPath },
       { downloadPhoto, model },
     );
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
     const pipeline = createPostPipeline({
       dedupeStore,
       evaluator,
-      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      telegram,
       watchlist: staticWatchlist,
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {
+      /* Keep test output quiet. */
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {
       /* Keep test output quiet. */
     });
 
-    await pipeline.process({
-      chatId: -1_001_234_567_890,
-      link: "https://t.me/example/70",
-      messageIds: [70],
-      photos: [photo],
-      text: "",
-    });
+    await pipeline.process(post(-1_001_234_567_890, "Flat for rent", 70));
 
-    expect(model.doGenerateCalls).toHaveLength(0);
+    expect(model.doGenerateCalls).toHaveLength(1);
     expect(dedupeStore.isProcessed("-1001234567890:70")).toBe(true);
-    expect(log).toHaveBeenCalledWith(
-      "post https://t.me/example/70: No match — No text or photos remain",
-    );
+    expect(telegram.sendToMe).not.toHaveBeenCalled();
     log.mockRestore();
+    warn.mockRestore();
     dedupeStore.close();
   });
 
@@ -576,4 +669,140 @@ describe("post pipeline", () => {
     log.mockRestore();
     dedupeStore.close();
   });
+
+  it("sends a Watchlist Notice from an unwatched Post", async () => {
+    expect.hasAssertions();
+    const files = noticeFiles();
+    const notices = createNotices(files);
+    const dedupeStore = openDedupeStore(":memory:");
+    const evaluator = {
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: true, notes: "Should not run" }),
+      ),
+    };
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
+    const pipeline = createPostPipeline({
+      dedupeStore,
+      evaluator,
+      notices,
+      telegram,
+      watchlist: createWatchlist(files.channelsPath),
+    });
+    writeFileSync(files.channelsPath, "-1001234567890\n-1009876543210\n");
+
+    await pipeline.process(post(-1_009_000_000_001, "Elsewhere", 40));
+
+    expect(telegram.sendToMe).toHaveBeenCalledWith(
+      "🟢 watchlist: watching 2 channels; added -1009876543210",
+    );
+    expect(evaluator.evaluate).not.toHaveBeenCalled();
+    dedupeStore.close();
+  });
+
+  it("does not evaluate a Listing while Criteria is unreadable", async () => {
+    expect.hasAssertions();
+    const files = noticeFiles();
+    const notices = createNotices(files);
+    const dedupeStore = openDedupeStore(":memory:");
+    const evaluator = {
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: true, notes: "Should not run" }),
+      ),
+    };
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
+    const pipeline = createPostPipeline({
+      dedupeStore,
+      evaluator,
+      notices,
+      telegram,
+      watchlist: staticWatchlist,
+    });
+    rmSync(files.criteriaPath);
+
+    await pipeline.process(post(-1_001_234_567_890, "Flat for rent", 41));
+
+    expect(telegram.sendToMe).toHaveBeenCalledWith("⚠️ criteria: not readable");
+    expect(evaluator.evaluate).not.toHaveBeenCalled();
+    expect(dedupeStore.isProcessed("-1001234567890:41")).toBe(false);
+    dedupeStore.close();
+  });
+
+  it("still evaluates a Listing when a Notice fails to send", async () => {
+    expect.hasAssertions();
+    const files = noticeFiles();
+    const notices = createNotices(files);
+    const dedupeStore = openDedupeStore(":memory:");
+    const evaluator = {
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: true, notes: "Looks good" }),
+      ),
+    };
+    const telegram = {
+      sendToMe: vi
+        .fn<Telegram["sendToMe"]>()
+        .mockRejectedValueOnce(new Error("Saved Messages unavailable"))
+        .mockResolvedValue(),
+    };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const pipeline = createPostPipeline({
+      dedupeStore,
+      evaluator,
+      notices,
+      telegram,
+      watchlist: staticWatchlist,
+    });
+    writeFileSync(files.criteriaPath, "Want a quieter street.\n");
+
+    await pipeline.process(post(-1_001_234_567_890, "Flat for rent", 42));
+
+    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+    expect(telegram.sendToMe).toHaveBeenNthCalledWith(1, "🟢 criteria: updated");
+    expect(telegram.sendToMe).toHaveBeenNthCalledWith(2, "https://t.me/example/42\nLooks good");
+    expect(dedupeStore.isProcessed("-1001234567890:42")).toBe(true);
+    error.mockRestore();
+    dedupeStore.close();
+  });
 });
+
+function noticeFiles(): {
+  channelsPath: string;
+  criteriaPath: string;
+  promptPath: string;
+  zonePath: string;
+} {
+  const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+  const channelsPath = path.join(directory, "channels.txt");
+  const criteriaPath = path.join(directory, "criteria.md");
+  const promptPath = path.join(directory, "prompt.md");
+  const zonePath = path.join(directory, "zone.geojson");
+  writeFileSync(channelsPath, "-1001234567890\n");
+  writeFileSync(criteriaPath, "Want a 1+1 in Old Town.\n");
+  writeFileSync(promptPath, "Judge the listing.\n");
+  writeFileSync(
+    zonePath,
+    JSON.stringify({
+      features: [
+        {
+          geometry: {
+            coordinates: [
+              [
+                [0, 0],
+                [1, 0],
+                [1, 1],
+                [0, 1],
+                [0, 0],
+              ],
+            ],
+            type: "Polygon",
+          },
+          properties: { name: "Old Batumi" },
+          type: "Feature",
+        },
+      ],
+      type: "FeatureCollection",
+    }),
+  );
+  return { channelsPath, criteriaPath, promptPath, zonePath };
+}

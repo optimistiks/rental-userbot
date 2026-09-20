@@ -1,10 +1,12 @@
 import type { DedupeStore } from "./dedupe-store.js";
 import type { EvaluationFailure, Evaluator, Verdict } from "./evaluator.js";
+import type { Notices } from "./notices.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { Post, Telegram } from "./telegram.js";
 import type { Watchlist } from "./watchlist.js";
 
 import { isWatchedPost } from "./channel-filter.js";
+import { MIN_LISTING_PHOTOS } from "./config.js";
 import { postKey } from "./dedupe-store.js";
 import { evaluationFailure } from "./evaluator.js";
 import { createSentryReporter } from "./sentry.js";
@@ -18,6 +20,7 @@ interface PostPipelineOptions {
   evaluator: Evaluator;
   telegram: Pick<Telegram, "sendToMe">;
   dedupeStore: DedupeStore;
+  notices?: Notices;
   errorReporter?: ErrorReporter;
 }
 
@@ -28,26 +31,35 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
   return {
     process(post) {
       // The watchlist is re-read here, so an edit to the file takes effect on this Post.
-      if (!isWatchedPost(post, options.watchlist.channelIds())) {
-        return Promise.resolve();
+      const channelIds = options.watchlist.channelIds();
+      const noticePull = options.notices?.pull() ?? { canEvaluate: true };
+      const noticeSend = deliverNotice(post, noticePull.notice, options, errorReporter);
+
+      if (!noticePull.canEvaluate) {
+        return noticeSend;
       }
 
-      if (post.text.trim() === "" && post.photos.length === 0) {
-        console.log(`post ${post.link}: dropped empty Post`);
-        return Promise.resolve();
+      if (!isWatchedPost(post, channelIds)) {
+        return noticeSend;
+      }
+
+      if (!isListing(post)) {
+        console.log(`post ${post.link}: skipped — ${describeSkip(post)}`);
+        return noticeSend;
       }
 
       const processedPostKey = postKey(post);
       if (options.dedupeStore.isProcessed(processedPostKey)) {
-        return Promise.resolve();
+        return noticeSend;
       }
 
       /* The queue is a promise chain on purpose: process() must return at once
          while each post still runs strictly after the previous one. */
       // oxlint-disable-next-line promise/prefer-await-to-then
-      const queued = queueTail.then(() =>
-        processQueuedPost(post, processedPostKey, options, errorReporter),
-      );
+      const queued = queueTail.then(async () => {
+        await noticeSend;
+        return processQueuedPost(post, processedPostKey, options, errorReporter);
+      });
       // oxlint-disable-next-line promise/prefer-await-to-then
       queueTail = queued.catch(() => {
         /* Failures are reported per post; the queue keeps going. */
@@ -109,6 +121,34 @@ function notificationFor(post: Post, verdict: Verdict): string | undefined {
   }
 
   return verdict.match ? `${post.link}\n${verdict.notes}` : undefined;
+}
+
+async function deliverNotice(
+  post: Post,
+  notice: string | undefined,
+  options: PostPipelineOptions,
+  errorReporter: ErrorReporter,
+): Promise<void> {
+  if (notice === undefined) {
+    return;
+  }
+
+  try {
+    await options.telegram.sendToMe(notice);
+  } catch (error) {
+    console.error(`post ${post.link}: failed to send Notice`, error);
+    errorReporter.captureException(error, { phase: "notice", postLink: post.link });
+  }
+}
+
+function isListing(post: Post): boolean {
+  return post.text.trim() !== "" && post.photos.length >= MIN_LISTING_PHOTOS;
+}
+
+function describeSkip(post: Post): string {
+  const count = post.photos.length;
+  const photos = `${count} photo${count === 1 ? "" : "s"}`;
+  return post.text.trim() === "" ? `${photos}, no text` : photos;
 }
 
 function isEvaluationFailure(verdict: Verdict): verdict is EvaluationFailure {

@@ -8,6 +8,7 @@ const PROMPT_PATH = "data/prompt.md";
 const ZONE_PATH = "data/zone.geojson";
 const BOT_DATABASE_PATH = "data/bot.sqlite";
 const MAX_PHOTOS = 6;
+const MIN_LISTING_PHOTOS = 3;
 const SESSION_LOCK_PATH = "data/session.lock";
 
 interface Settings {
@@ -100,6 +101,7 @@ export {
   ZONE_PATH,
   BOT_DATABASE_PATH,
   MAX_PHOTOS,
+  MIN_LISTING_PHOTOS,
   SESSION_LOCK_PATH,
   type Settings,
   type LoginSettings,

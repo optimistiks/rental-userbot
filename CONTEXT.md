@@ -1,6 +1,6 @@
 # Rental Listings Userbot
 
-A Telegram userbot on the owner's personal account that watches apartment rental channels, judges each new Post against the owner's Criteria, and saves a link to every match in the owner's Saved Messages.
+A Telegram userbot on the owner's personal account that watches apartment rental channels, judges each new Listing against the owner's Criteria, and writes Matches and Notices to the owner's Saved Messages.
 
 ## Language
 
@@ -28,18 +28,24 @@ _Avoid_: system message, instructions, template
 The area the owner will live in, drawn as an outline in a file the owner edits without code changes. The evaluation can check where a Post's flat lies against it. It sits alongside the Criteria and does not replace the location line in them.
 _Avoid_: district, area, polygon
 
+### What the bot writes
+
+**Notice**:
+A message the bot writes to Saved Messages about itself, not about a Post: that it started, or that an owner-edited file was picked up or became unreadable. A healthy Notice starts with 🟢. An unreadable Criteria, Prompt, or Zone starts with ⚠️, and no Listing is judged until that file reads again.
+_Avoid_: system message, status, log, heartbeat
+
 ### What the bot sees
 
 **Post**:
-One unit published in a channel: a single message, or an album of messages grouped together. The unit that is evaluated exactly once.
+One unit published in a channel: a single message, or an album of messages grouped together. A Post that is not a Listing is ignored.
 _Avoid_: message group, update, event
 
 **Watched channel**:
-A channel on the Watchlist. Posts from any other chat are ignored.
+A channel on the Watchlist. Posts from any other chat are ignored. The owner joins it in Telegram; the Watchlist does not join it.
 _Avoid_: source, feed, subscribed channel
 
 **Listing**:
-A Post assembled for evaluation: its text, up to six photos, and a link back to the Post.
+A Post with post text and at least three photos, assembled for evaluation: its text, up to six photos, and a link back to the Post. A Listing is judged exactly once.
 _Avoid_: ad, offer, apartment
 
 **Rental offer**:

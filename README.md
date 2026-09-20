@@ -11,14 +11,17 @@ makes the final call on its own; no rule in the code overrides it.
 ## What it does with a post
 
 1. A new post appears in one of the channels listed in `data/channels.txt`. Anything from elsewhere is ignored.
-2. Posts already handled are skipped, even after a restart. An album counts as one post.
-3. The agent evaluates it against your criteria, one post at a time.
-4. A match arrives in Saved Messages as a link plus the agent's notes. Non-matches are silent.
-5. If the model fails three times, you get `⚠️ couldn't evaluate` instead, so nothing disappears quietly.
+2. Only a listing reaches the agent: post text and at least three photos. Everything else is skipped
+   before a model call, and is not marked a Processed Post, so a later album can still be judged.
+3. A Processed Post is skipped, even after a restart. An album counts as one post.
+4. The agent evaluates a listing against your criteria, one at a time.
+5. A match arrives in Saved Messages as a link plus the agent's notes. Non-matches are silent.
+6. If the model fails three times, you get `⚠️ couldn't evaluate` instead, so nothing disappears quietly.
 
-Every message the bot writes starts with `#rental_userbot` on its own line — matches, evaluation failures
-and the startup line alike — so you can pull them out of Saved Messages with one search. Nothing written
-before this existed is tagged; the filter is clean only from there on.
+Every message the bot writes starts with `#rental_userbot` on its own line — matches, evaluation failures,
+startup, and Notices when you edit the watchlist, criteria, prompt or zone — so you can pull them out of
+Saved Messages with one search. Nothing written before this existed is tagged; the filter is clean only
+from there on.
 
 ## Requirements
 
@@ -111,17 +114,17 @@ the address bar. Whatever you use, the ID must start with `-100`.
 Anything after a `#` is a comment, blank lines are fine, and any line that isn't a marked channel ID is
 ignored — so a bad paste costs you nothing, and neither does an empty file, which simply watches nothing.
 
-Adding or removing a channel takes effect on the next post; nothing needs restarting. When the set of
-watched channels changes, the log says so:
+Adding or removing a channel takes effect on the next post; nothing needs restarting. Saved Messages
+gets a 🟢 Notice when the watchlist, criteria, prompt or zone actually changes — meaning, not
+whitespace or comments. A vanished criteria, prompt or zone file is a ⚠️ Notice, and nothing is judged
+until that file reads again.
 
 ```
-watchlist: watching 2 channels; added -1009876543210; removed -1001234567890
+🟢 watchlist: watching 2 channels; added -1009876543210; removed -1001234567890
 ```
 
-Your account has to have joined every channel it watches; the bot never joins anything by itself. The
-membership check runs once, at startup, so a channel added while the bot is running is watched right away
-but isn't checked against your joined channels until the next restart — if you never joined it, it's just
-quiet.
+Your account has to have joined every channel it watches; the bot never joins anything by itself. If
+you add an ID you have not joined in Telegram, it is watched immediately and stays quiet until you join.
 
 ## Environment variables
 

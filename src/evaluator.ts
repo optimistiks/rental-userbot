@@ -45,7 +45,7 @@ interface EvaluatorToolImplementations {
 
 const TOOL_TIMEOUT_MS = 10_000;
 
-/** A Post assembled for evaluation: its text, up to MAX_PHOTOS photos, and a link back to it. */
+/** A Post with post text and at least three photos, assembled for evaluation. */
 type Listing = Pick<Post, "text"> & Partial<Pick<Post, "chatId" | "link" | "photos">>;
 
 interface Evaluator {
@@ -287,13 +287,13 @@ async function downloadPhotos(
 }
 
 const MAX_TEXT_PREVIEW = 80;
-const MAX_THINKING_PREVIEW = 200;
+const MAX_THINKING_PREVIEW = 300;
 
 /** One readable line per step: what the agent was thinking, if it said. */
 function logStep(link: string, step: EvaluationStep): void {
   for (const part of step.content) {
     if (part.type === "reasoning" && part.text.trim() !== "") {
-      console.log(`post ${link}: thinking — ${firstLine(part.text, MAX_THINKING_PREVIEW)}`);
+      console.log(`post ${link}: thinking — ${previewThinking(part.text, MAX_THINKING_PREVIEW)}`);
     }
 
     if (part.type === "tool-error") {
@@ -384,6 +384,11 @@ function formatCoordinate(value: unknown): string {
 function firstLine(text: string, maxLength: number): string {
   const line = text.trim().split(/\r\n|\n|\r/u, 1)[0] ?? "";
   return line.length > maxLength ? `${line.slice(0, maxLength)}…` : line;
+}
+
+function previewThinking(text: string, maxLength: number): string {
+  const collapsed = text.trim().replaceAll(/\s+/gu, " ");
+  return collapsed.length > maxLength ? `${collapsed.slice(0, maxLength)}…` : collapsed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

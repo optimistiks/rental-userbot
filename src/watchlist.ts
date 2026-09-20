@@ -63,11 +63,14 @@ function createWatchlist(channelsPath: string): Watchlist {
   };
 }
 
-function logChange(previous: readonly number[], current: readonly number[]): void {
+function watchlistChangeMessage(
+  previous: readonly number[],
+  current: readonly number[],
+): string | undefined {
   const added = difference(current, previous);
   const removed = difference(previous, current);
   if (added.length === 0 && removed.length === 0) {
-    return;
+    return undefined;
   }
 
   const parts = [`watching ${current.length} ${current.length === 1 ? "channel" : "channels"}`];
@@ -78,7 +81,14 @@ function logChange(previous: readonly number[], current: readonly number[]): voi
     parts.push(`removed ${removed.join(", ")}`);
   }
 
-  console.log(`watchlist: ${parts.join("; ")}`);
+  return parts.join("; ");
+}
+
+function logChange(previous: readonly number[], current: readonly number[]): void {
+  const message = watchlistChangeMessage(previous, current);
+  if (message !== undefined) {
+    console.log(`watchlist: ${message}`);
+  }
 }
 
 function difference(channelIds: readonly number[], other: readonly number[]): number[] {
@@ -86,4 +96,4 @@ function difference(channelIds: readonly number[], other: readonly number[]): nu
   return channelIds.filter((channelId) => !excluded.has(channelId));
 }
 
-export { type Watchlist, readWatchlistFile, createWatchlist };
+export { type Watchlist, readWatchlistFile, createWatchlist, watchlistChangeMessage };
