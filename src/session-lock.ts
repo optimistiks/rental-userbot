@@ -1,9 +1,9 @@
-import Database from 'better-sqlite3'
+import Database from "better-sqlite3";
 
-import { SESSION_LOCK_PATH } from './config.js'
+import { SESSION_LOCK_PATH } from "./config.js";
 
 export interface SessionLock {
-  release(): void
+  release(): void;
 }
 
 /**
@@ -15,30 +15,30 @@ export interface SessionLock {
  * lock behind.
  */
 export function acquireSessionLock(lockPath: string = SESSION_LOCK_PATH): SessionLock {
-  const database = new Database(lockPath)
+  const database = new Database(lockPath);
 
   try {
     // No waiting: a second instance must fail immediately, not queue behind the first.
-    database.pragma('busy_timeout = 0')
-    database.pragma('locking_mode = EXCLUSIVE')
-    database.exec('CREATE TABLE IF NOT EXISTS session_lock (id INTEGER PRIMARY KEY)')
-    database.exec('BEGIN IMMEDIATE')
+    database.pragma("busy_timeout = 0");
+    database.pragma("locking_mode = EXCLUSIVE");
+    database.exec("CREATE TABLE IF NOT EXISTS session_lock (id INTEGER PRIMARY KEY)");
+    database.exec("BEGIN IMMEDIATE");
   } catch (error) {
-    database.close()
+    database.close();
     throw new Error(
       `Another instance is already using the Telegram session ("${lockPath}"). Stop the daemon before running login.`,
       { cause: error },
-    )
+    );
   }
 
   return {
     release() {
       try {
-        database.exec('ROLLBACK')
+        database.exec("ROLLBACK");
       } catch {
         // The transaction is gone already; closing is what matters.
       }
-      database.close()
+      database.close();
     },
-  }
+  };
 }

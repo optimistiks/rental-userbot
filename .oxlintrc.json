@@ -1,0 +1,68 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "pedantic": "error",
+    "perf": "error",
+    "style": "error",
+    "restriction": "error"
+  },
+  "options": {
+    "typeAware": true,
+    "typeCheck": true,
+    "maxWarnings": 0
+  },
+  "rules": {
+    "sort-imports": ["error", { "ignoreDeclarationSort": true }],
+    "require-await": "off",
+    "no-duplicate-imports": "off",
+
+    "import/no-named-export": "off",
+    "import/prefer-default-export": "off",
+    "import/no-default-export": "error",
+
+    "no-console": "off",
+    "node/no-sync": "off",
+    "node/no-process-env": "off",
+    "import/no-nodejs-modules": "off",
+    "promise/prefer-await-to-callbacks": "off",
+    "promise/avoid-new": "off",
+    "vitest/require-test-timeout": "off",
+    "vitest/no-importing-vitest-globals": "off",
+    "vitest/no-hooks": "off",
+    "vitest/require-hook": "off",
+
+    "one-var": "off",
+    "no-magic-numbers": "off",
+    "no-undefined": "off",
+    "no-ternary": "off",
+    "no-plusplus": "off",
+    "func-style": "off",
+    "id-length": "off",
+    "sort-vars": "off",
+    "max-lines": "off",
+    "max-lines-per-function": "off",
+    "max-params": "off",
+    "max-statements": "off",
+    "unicorn/no-null": "off",
+    "unicorn/no-array-reduce": "off",
+    "oxc/no-async-await": "off",
+    "oxc/no-optional-chaining": "off",
+    "oxc/no-rest-spread-properties": "off",
+    "typescript/prefer-readonly-parameter-types": "off",
+    "typescript/promise-function-async": "off",
+
+    "complexity": ["error", { "max": 10, "variant": "modified" }],
+    "max-depth": ["error", { "max": 4 }],
+    "max-nested-callbacks": ["error", { "max": 4 }],
+
+    "no-use-before-define": "off",
+
+    "vitest/prefer-to-be-falsy": "off",
+    "vitest/prefer-to-be-truthy": "off",
+    "vitest/max-nested-describe": ["error", { "max": 2 }]
+  },
+  "ignorePatterns": ["node_modules", "dist", "data"]
+}

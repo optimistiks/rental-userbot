@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.4.2",
   "scripts": {
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -22,7 +25,11 @@
     "@types/better-sqlite3": "7.6.13",
     "@types/node": "24.10.1",
     "msw": "2.15.0",
+    "oxfmt": "0.68.0",
+    "oxlint": "1.83.0",
+    "oxlint-tsgolint": "7.0.2002",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
-  }
+  },
+  "packageManager": "pnpm@12.4.2"
 }

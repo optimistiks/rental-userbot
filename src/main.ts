@@ -1,39 +1,40 @@
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath } from "node:url";
 
-import { readLoginSettings, readSettings, type LoginSettings, type Settings } from './config.js'
+import { readLoginSettings, readSettings, type LoginSettings, type Settings } from "./config.js";
+import { errorMessage } from "./errors.js";
+import { createGeocoder } from "./geocoder.js";
+import { createPostPipeline } from "./pipeline.js";
+import { initializeSentry, type ErrorReporter } from "./sentry.js";
+import { acquireSessionLock, type SessionLock } from "./session-lock.js";
+import { announceStartup, initializeStartup } from "./startup.js";
 import {
   createTelegramAdapter,
   createTelegramClient,
   startDaemonSession,
   type SessionClient,
   type TelegramClientLike,
-} from './telegram.js'
-import { errorMessage } from './errors.js'
-import { createGeocoder } from './geocoder.js'
-import { createPostPipeline } from './pipeline.js'
-import { initializeSentry, type ErrorReporter } from './sentry.js'
-import { acquireSessionLock, type SessionLock } from './session-lock.js'
-import { announceStartup, initializeStartup } from './startup.js'
-import { createZoneChecker } from './zone.js'
+} from "./telegram.js";
+import { createZoneChecker } from "./zone.js";
 
-type ManagedClient = TelegramClientLike & SessionClient & {
-  destroy(): Promise<void>
-}
+type ManagedClient = TelegramClientLike &
+  SessionClient & {
+    destroy(): Promise<void>;
+  };
 
-type ClientFactory = (settings: Pick<Settings, 'apiId' | 'apiHash'>) => ManagedClient
+type ClientFactory = (settings: Pick<Settings, "apiId" | "apiHash">) => ManagedClient;
 
 export async function runLogin(
   settings: LoginSettings,
   makeClient: ClientFactory = createTelegramClient,
   lock: SessionLock = acquireSessionLock(),
 ): Promise<void> {
-  const client = makeClient(settings)
+  const client = makeClient(settings);
 
   try {
-    await client.start()
+    await client.start();
   } finally {
-    await client.destroy()
-    lock.release()
+    await client.destroy();
+    lock.release();
   }
 }
 
@@ -44,21 +45,21 @@ export async function runDaemon(
   errorReporter: ErrorReporter = initializeSentry(settings.sentryDsn),
   lock: SessionLock = acquireSessionLock(),
 ): Promise<void> {
-  let resources: ReturnType<typeof initializeStartup> | undefined
-  let client: ManagedClient | undefined
+  let resources: ReturnType<typeof initializeStartup> | undefined;
+  let client: ManagedClient | undefined;
 
   try {
-    resources = initializeStartup(settings, databasePath)
-    const { createEvaluator, createEvaluatorTools } = await import('./evaluator.js')
-    client = makeClient(settings)
-    await startDaemonSession(client)
-    const telegram = createTelegramAdapter(client)
-    await announceStartup(telegram, settings.channelIds)
+    resources = initializeStartup(settings, databasePath);
+    const { createEvaluator, createEvaluatorTools } = await import("./evaluator.js");
+    client = makeClient(settings);
+    await startDaemonSession(client);
+    const telegram = createTelegramAdapter(client);
+    await announceStartup(telegram, settings.channelIds);
     const geocoder = createGeocoder({
       url: settings.geocoderUrl,
       token: settings.locationIqToken,
-    })
-    const zoneChecker = createZoneChecker(settings.zonePath)
+    });
+    const zoneChecker = createZoneChecker(settings.zonePath);
     const pipeline = createPostPipeline({
       channelIds: settings.channelIds,
       evaluator: createEvaluator(settings, {
@@ -72,27 +73,27 @@ export async function runDaemon(
       telegram,
       dedupeStore: resources.dedupeStore,
       errorReporter,
-    })
+    });
     telegram.onPost((post) => {
       void pipeline.process(post).catch((error) => {
-        errorReporter.captureException(error, { postLink: post.link, phase: 'pipeline' })
-        console.error(`post ${post.link}: pipeline failed`, error)
-      })
-    })
+        errorReporter.captureException(error, { postLink: post.link, phase: "pipeline" });
+        console.error(`post ${post.link}: pipeline failed`, error);
+      });
+    });
   } catch (error) {
-    errorReporter.captureException(error)
-    lock.release()
-    resources?.dedupeStore.close()
+    errorReporter.captureException(error);
+    lock.release();
+    resources?.dedupeStore.close();
 
     if (client !== undefined) {
       try {
-        await client.destroy()
+        await client.destroy();
       } catch {
         // Preserve the startup error; the process is already failing.
       }
     }
 
-    throw error
+    throw error;
   }
 }
 
@@ -100,27 +101,27 @@ export async function start(
   argv: readonly string[] = process.argv,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  let errorReporter: ErrorReporter | undefined
+  let errorReporter: ErrorReporter | undefined;
   try {
-    if (argv[2] === 'login') {
-      await runLogin(readLoginSettings(env))
+    if (argv[2] === "login") {
+      await runLogin(readLoginSettings(env));
     } else {
-      const settings = readSettings(env)
-      errorReporter = initializeSentry(settings.sentryDsn)
-      await runDaemon(settings, createTelegramClient, undefined, errorReporter)
+      const settings = readSettings(env);
+      errorReporter = initializeSentry(settings.sentryDsn);
+      await runDaemon(settings, createTelegramClient, undefined, errorReporter);
     }
   } catch (error) {
-    if (argv[2] !== 'login') {
-      (errorReporter ?? initializeSentry(env.SENTRY_DSN)).captureException(error)
+    if (argv[2] !== "login") {
+      (errorReporter ?? initializeSentry(env.SENTRY_DSN)).captureException(error);
     }
-    console.error(errorMessage(error))
-    process.exitCode = 1
+    console.error(errorMessage(error));
+    process.exitCode = 1;
   }
 }
 
 const isEntrypoint =
-  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]
+  process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isEntrypoint) {
-  void start()
+  void start();
 }
