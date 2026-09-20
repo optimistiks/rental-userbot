@@ -12,8 +12,12 @@ _Avoid_: message group, update, event
 A Post whose Verdict has been handled, whether it was a match, no match, or evaluation failure. A Processed Post is never evaluated again, even if it arrives again after a restart or as a late part of an album.
 _Avoid_: seen, handled, done
 
+**Watchlist**:
+The channels the bot follows, written by the owner as a file of channel IDs they edit without code changes or a restart. An empty Watchlist watches nothing, which is a normal state.
+_Avoid_: channel list, subscriptions, sources
+
 **Watched channel**:
-A channel whose ID the owner has listed in `data/channels.txt` for the bot to follow, one ID per line, edited without a restart. Posts from any other chat are ignored.
+A channel on the Watchlist. Posts from any other chat are ignored.
 _Avoid_: source, feed, subscribed channel
 
 **Listing**:
