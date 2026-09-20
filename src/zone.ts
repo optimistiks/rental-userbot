@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon'
 
+import { errorMessage } from './errors.js'
+
 type ZoneGeometry = {
   type: 'Polygon' | 'MultiPolygon'
   coordinates: unknown
@@ -23,8 +25,14 @@ export interface ZoneResult {
   zone: string | null
 }
 
+/** A location on the map. GeoJSON's own [lon, lat] order is confined to toPosition. */
+export interface Point {
+  lat: number
+  lon: number
+}
+
 export interface ZoneChecker {
-  inZone(lat: number, lon: number): ZoneResult
+  inZone(point: Point): ZoneResult
 }
 
 export function readZoneFile(zonePath: string): ZoneFile {
@@ -32,9 +40,8 @@ export function readZoneFile(zonePath: string): ZoneFile {
   try {
     parsed = JSON.parse(readFileSync(zonePath, 'utf8'))
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
     throw new Error(
-      'Zone file "' + zonePath + '" is not valid GeoJSON: ' + message,
+      `Zone file "${zonePath}" is not valid GeoJSON: ${errorMessage(error)}`,
       { cause: error },
     )
   }
@@ -51,13 +58,13 @@ export function readZoneFile(zonePath: string): ZoneFile {
 
 export function createZoneChecker(zonePath: string): ZoneChecker {
   return {
-    inZone(lat, lon) {
+    inZone(point) {
       const zone = readZoneFile(zonePath)
 
       for (const feature of zone.features) {
         if (
           booleanPointInPolygon(
-            [lon, lat],
+            toPosition(point),
             feature as Parameters<typeof booleanPointInPolygon>[1],
           )
         ) {
@@ -95,10 +102,6 @@ function zoneFeatures(value: unknown, zonePath: string): ZoneFeature[] {
 
   if (isZoneFeature(value)) {
     return [value]
-  }
-
-  if (isZoneGeometry(value)) {
-    return [{ type: 'Feature', properties: null, geometry: value }]
   }
 
   return []
@@ -202,4 +205,8 @@ function featureName(feature: ZoneFeature): string | null {
 
 function isRecord(value: unknown): value is Record<string, any> {
   return typeof value === 'object' && value !== null
+}
+
+function toPosition(point: Point): [number, number] {
+  return [point.lon, point.lat]
 }

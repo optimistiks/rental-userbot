@@ -1,4 +1,8 @@
+// Sentry auto-instruments outgoing requests, and the LocationIQ URL carries the
+// token in its query string, so this request stays out of the trace entirely.
 import { suppressTracing } from '@sentry/node'
+
+import { errorMessage } from './errors.js'
 
 export type GeocodePrecision = 'building' | 'place' | 'street' | 'area'
 
@@ -123,9 +127,6 @@ async function responseError(response: Response, token: string): Promise<string>
   }
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 function redact(message: string, token: string): string {
   return token === '' ? message : message.split(token).join('[redacted]')

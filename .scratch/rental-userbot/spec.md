@@ -158,7 +158,7 @@ geocode(query: string) → { results: Array<{
 inZone(lat: number, lon: number) → { inside: boolean, zone: string | null }   // the matching outline's name
 ```
 - **Geocoder adapter:** one `GET GEOCODER_URL` per call with `key=<LOCATIONIQ_TOKEN>`, `q=<query>, Batumi`, `countrycodes=ge`, `format=json`, `limit=3`, `matchquality=1`. The adapter appends ", Batumi" and maps `matchquality.matchlevel` (never `matchcode`) onto `precision`: `building`→`building`, `venue`→`place`, `street`→`street`, anything coarser→`area`. `lat`/`lon` arrive as strings. The request URL holds the token, so it is **never logged or shown**. No LocationIQ attribution (personal, non-commercial use). ([locationiq-search](research/locationiq-search.md))
-- **Zone tool:** the **Zone** is a GeoJSON file at `ZONE_PATH` (Polygon or MultiPolygon features; starting copy = the OSM outlines of Old Batumi, relation 12695439, and Rustaveli, relation 12695438). It is validated at startup and **re-read on every call**. `zone` is the matching feature's name. Point-in-polygon: `@turf/boolean-point-in-polygon` against each feature.
+- **Zone tool:** the **Zone** is a GeoJSON file at `ZONE_PATH` (a FeatureCollection, or a single Feature, whose Polygon or MultiPolygon features are used; starting copy = the OSM outlines of Old Batumi, relation 12695439, and Rustaveli, relation 12695438). It is validated at startup and **re-read on every call**. `zone` is the matching feature's name. Point-in-polygon: `@turf/boolean-point-in-polygon` against each feature.
 - **Tool errors** (geocoder timeout or 401, unreadable Zone file, arguments failing their schema) come back to the model as tool results, so the agent can try something else. They never fail the attempt. A single tool call is capped at 10s.
 - The "Old Town or Rustaveli" line stays in the Criteria. The Zone does not replace it; both are inputs the agent weighs.
 
@@ -216,7 +216,9 @@ There is no heartbeat.
 - Every agent run is a trace: steps, reasoning summaries, tool calls and results, tokens and cost.
 - Crashes, evaluation failures and failed sends are reported as errors.
 - Prompts and outputs are captured, so the Criteria and Post text do leave the laptop. Accepted: the project is the owner's alone.
-- **`SENTRY_DSN` is optional.** Without it Sentry is off and the bot behaves exactly as it does otherwise, which also keeps tests offline. Sentry is fire-and-forget: it is never awaited in the pipeline and a Sentry failure never crashes a run or blocks a Post.
+- **`SENTRY_DSN` is optional.** Without it Sentry is off and the bot behaves exactly as it does otherwise, which also keeps tests offline.
+- **Sentry never changes the outcome.** A span does wrap each agent run, because it has to in order to measure it, so that call is awaited; but if Sentry itself fails, the run continues on its own and the Verdict is unaffected. Nothing else in the pipeline waits on Sentry, and no Sentry failure can crash a run, block a Post or evaluate one twice.
+- The geocoder adapter suppresses tracing around its own request: Sentry auto-instruments outgoing calls, and the LocationIQ URL carries the token in its query string. That is why the adapter imports Sentry despite being otherwise provider-agnostic.
 
 ## Commands
 

@@ -73,28 +73,25 @@ export function createSentryReporter(
   return {
     enabled: true,
     run<T>(postLink: string, operation: () => Promise<T>) {
-      let operationPromise: Promise<T> | undefined
-      const invokeOperation = () => {
-        try {
-          operationPromise = operation()
-        } catch (error) {
-          operationPromise = Promise.reject(error)
-        }
-        return operationPromise
-      }
+      // The span has to wrap the run to measure it, but Sentry must never change
+      // the outcome: if startSpan itself fails, fall back to the bare operation,
+      // reusing the started one so a Post is never evaluated twice.
+      let started: Promise<T> | undefined
+      const startOperation = () => (started = operation())
 
       try {
-        const spanResult = api.startSpan(
-          {
-            name: 'Evaluate Telegram Post',
-            op: 'rental.evaluation',
-            attributes: { 'telegram.post.link': postLink },
-          },
-          invokeOperation,
+        return Promise.resolve(
+          api.startSpan(
+            {
+              name: 'Evaluate Telegram Post',
+              op: 'rental.evaluation',
+              attributes: { 'telegram.post.link': postLink },
+            },
+            startOperation,
+          ),
         )
-        return Promise.resolve(spanResult).catch(() => operationPromise ?? operation())
       } catch {
-        return operationPromise ?? operation()
+        return started ?? operation()
       }
     },
     captureException(error, context) {

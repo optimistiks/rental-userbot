@@ -1,14 +1,10 @@
 import type { Settings } from './config.js'
 import { openDedupeStore, type DedupeStore } from './dedupe-store.js'
-import { readCriteriaFile } from './criteria.js'
-import { readPromptFile } from './prompt.js'
+import { readCriteriaFile, readPromptFile } from './text-file.js'
 import type { Telegram } from './telegram.js'
 import { readZoneFile } from './zone.js'
 
 export interface StartupResources {
-  settings: Settings
-  criteria: string
-  prompt: string
   dedupeStore: DedupeStore
 }
 
@@ -16,19 +12,27 @@ export function initializeStartup(
   settings: Settings,
   databasePath?: string,
 ): StartupResources {
-  const criteria = readCriteriaFile(settings.criteriaPath)
-  const prompt = readPromptFile(settings.promptPath)
+  // Read-and-discard: the Evaluator re-reads both before every run, so this is
+  // only the startup check that they exist and parse.
+  readCriteriaFile(settings.criteriaPath)
+  readPromptFile(settings.promptPath)
   readZoneFile(settings.zonePath)
-  const dedupeStore = openDedupeStore(databasePath)
-  return { settings, criteria, prompt, dedupeStore }
+  return { dedupeStore: openDedupeStore(databasePath) }
+}
+
+export function unjoinedChannelIds(
+  channelIds: readonly number[],
+  joinedChannelIds: readonly number[],
+): number[] {
+  const joined = new Set(joinedChannelIds)
+  return channelIds.filter((channelId) => !joined.has(channelId))
 }
 
 export function startupMessage(
   channelIds: number[],
   joinedChannelIds: number[],
 ): string {
-  const joined = new Set(joinedChannelIds)
-  const missing = channelIds.filter((channelId) => !joined.has(channelId))
+  const missing = unjoinedChannelIds(channelIds, joinedChannelIds)
   const lines = [`🟢 started, watching ${channelIds.length - missing.length}/${channelIds.length} channels`]
 
   if (missing.length > 0) {
@@ -44,7 +48,7 @@ export async function announceStartup(
 ): Promise<void> {
   const joinedChannelIds = await telegram.joinedChannelIds()
   const message = startupMessage(channelIds, joinedChannelIds)
-  const missing = channelIds.filter((channelId) => !joinedChannelIds.includes(channelId))
+  const missing = unjoinedChannelIds(channelIds, joinedChannelIds)
 
   for (const channelId of missing) {
     console.warn(`channel not joined: ${channelId}`)

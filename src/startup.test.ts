@@ -25,15 +25,13 @@ const settings = (
 })
 
 describe('initializeStartup', () => {
-  it('reads Criteria and initializes a SQLite Dedupe Store', () => {
+  it('checks the Criteria file and initializes a SQLite Dedupe Store', () => {
     const directory = mkdtempSync(join(tmpdir(), 'rental-userbot-'))
     const criteriaPath = join(directory, 'criteria.md')
     writeFileSync(criteriaPath, 'Criteria text')
 
     const resources = initializeStartup(settings(criteriaPath), ':memory:')
 
-    expect(resources.criteria).toBe('Criteria text')
-    expect(resources.prompt).toBe('Criteria text')
     expect(resources.dedupeStore.isProcessed('chat:1')).toBe(false)
     resources.dedupeStore.close()
   })

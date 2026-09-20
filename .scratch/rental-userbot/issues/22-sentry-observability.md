@@ -18,3 +18,8 @@
 ## Answer
 
 Implemented the optional Sentry integration. `SENTRY_DSN` initializes `@sentry/node` at daemon startup, enables AI SDK v7 telemetry for agent traces, and captures evaluation, startup, pipeline, and notification failures with Post-link context. Sentry remains disabled when unset, all reporting is best-effort, and error/span data is scrubbed for credentials, database paths, and provider URLs. Console logging and the existing pipeline behavior are unchanged. Automated coverage passes; the real-Post Sentry trace and unset-DSN acceptance check remain manual.
+
+## Comments
+
+- 2026-09-20 (post-review): the "never awaited" rule was reworded in the spec. A span has to wrap the agent run to measure it, so that one call is awaited, with a fallback that runs the operation plainly if Sentry fails. Nothing else waits on Sentry.
+- 2026-09-20 (post-review): the geocoder adapter keeps its `suppressTracing` import. Sentry auto-instruments outgoing requests and the LocationIQ URL carries the token, so the request stays out of the trace. Recorded in the spec.

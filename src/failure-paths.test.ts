@@ -75,8 +75,9 @@ describe('failure paths', () => {
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const evaluator = createEvaluator(
-      { modelId: 'test/model', ...files, model },
+      { modelId: 'test/model', ...files },
       {
+        model,
         retryPolicy: retryPolicy(),
       },
     )
@@ -109,8 +110,9 @@ describe('failure paths', () => {
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const evaluator = createEvaluator(
-      { modelId: 'test/model', ...files, model },
+      { modelId: 'test/model', ...files },
       {
+        model,
         retryPolicy: retryPolicy(),
       },
     )
@@ -149,8 +151,8 @@ describe('failure paths', () => {
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
       evaluator: createEvaluator(
-        { modelId: 'test/model', ...files, model },
-        { retryPolicy: retryPolicy() },
+        { modelId: 'test/model', ...files },
+        { model, retryPolicy: retryPolicy() },
       ),
       telegram,
       dedupeStore,
@@ -183,8 +185,9 @@ describe('failure paths', () => {
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const evaluator = createEvaluator(
-      { modelId: 'test/model', ...files, model },
+      { modelId: 'test/model', ...files },
       {
+        model,
         retryPolicy: retryPolicy(),
       },
     )
@@ -208,8 +211,8 @@ describe('failure paths', () => {
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const evaluator = createEvaluator(
-      { modelId: 'test/model', ...files, model },
-      { retryPolicy: retryPolicy() },
+      { modelId: 'test/model', ...files },
+      { model, retryPolicy: retryPolicy() },
     )
 
     await expect(evaluator.evaluate({ ...post(30) })).resolves.toMatchObject({
@@ -244,8 +247,9 @@ describe('failure paths', () => {
     })
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const evaluator = createEvaluator(
-      { modelId: 'test/model', ...files, model },
+      { modelId: 'test/model', ...files },
       {
+        model,
         retryPolicy: retryPolicy(10),
       },
     )
@@ -267,9 +271,9 @@ describe('failure paths', () => {
         modelId: 'test/model',
         promptPath: files.promptPath,
         criteriaPath: join(tmpdir(), 'missing-criteria.md'),
-        model,
       },
       {
+        model,
         retryPolicy: retryPolicy(),
       },
     )
@@ -299,8 +303,8 @@ describe('failure paths', () => {
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
       evaluator: createEvaluator(
-        { modelId: 'test/model', ...files, model },
-        { retryPolicy: retryPolicy() },
+        { modelId: 'test/model', ...files },
+        { model, retryPolicy: retryPolicy() },
       ),
       telegram,
       dedupeStore,

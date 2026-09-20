@@ -7,12 +7,12 @@ import {
 } from 'ai'
 import { z } from 'zod'
 
-import { readCriteriaFile } from './criteria.js'
-import { readPromptFile } from './prompt.js'
+import { errorMessage, errorName } from './errors.js'
+import { readCriteriaFile, readPromptFile } from './text-file.js'
 import { createSentryReporter, type ErrorReporter } from './sentry.js'
 import type { PhotoRef, Post } from './telegram.js'
 import type { GeocodeResponse } from './geocoder.js'
-import type { ZoneResult } from './zone.js'
+import type { Point, ZoneResult } from './zone.js'
 
 export const verdictSchema = z.object({
   match: z.boolean(),
@@ -30,7 +30,6 @@ export interface EvaluatorSettings {
   modelId: string
   promptPath: string
   criteriaPath: string
-  model?: LanguageModel
 }
 
 export interface EvaluatorOptions {
@@ -43,16 +42,16 @@ export interface EvaluatorOptions {
 
 export interface EvaluatorToolImplementations {
   geocode: (query: string, signal?: AbortSignal) => Promise<GeocodeResponse>
-  inZone: (lat: number, lon: number) => ZoneResult
+  inZone: (point: Point) => ZoneResult
 }
 
 export const TOOL_TIMEOUT_MS = 10_000
 
-export type EvaluatorPost = Pick<Post, 'text'> &
-  Partial<Pick<Post, 'link' | 'photos'>>
+/** A Post assembled for evaluation: its text, up to MAX_PHOTOS photos, and a link back to it. */
+export type Listing = Pick<Post, 'text'> & Partial<Pick<Post, 'link' | 'photos'>>
 
 export interface Evaluator {
-  evaluate(post: EvaluatorPost): Promise<Verdict>
+  evaluate(listing: Listing): Promise<Verdict>
 }
 
 export interface RetryPolicy {
@@ -73,7 +72,7 @@ export function createEvaluator(
   settings: EvaluatorSettings,
   options: EvaluatorOptions = {},
 ): Evaluator {
-  const model = options.model ?? settings.model ?? (settings.modelId as LanguageModel)
+  const model = options.model ?? (settings.modelId as LanguageModel)
   const downloadPhoto = options.downloadPhoto
   const retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY
   const tools = options.tools
@@ -85,6 +84,7 @@ export function createEvaluator(
       const photoData = await downloadPhotos(post.photos ?? [], link, downloadPhoto)
 
       if (post.text.trim() === '' && photoData.length === 0) {
+        console.log(`post ${link}: nothing left to evaluate, no model call`)
         return { match: false, notes: 'No text or photos remain' }
       }
 
@@ -207,7 +207,7 @@ export function createEvaluatorTools(
       description:
         'Check whether a latitude and longitude is inside the configured rental Zone. The result names the matching outline when the point is inside.',
       inputSchema: z.object({ lat: z.number(), lon: z.number() }),
-      execute: ({ lat, lon }) => implementations.inZone(lat, lon),
+      execute: ({ lat, lon }) => implementations.inZone({ lat, lon }),
     }),
   }
 }
@@ -223,26 +223,11 @@ export function formatEvaluationError(error: unknown): string {
   return `${label}: ${message}`
 }
 
-function evaluationFailure(error: unknown): EvaluationFailure {
+export function evaluationFailure(error: unknown): EvaluationFailure {
   return {
     kind: 'evaluation-failure',
     error: formatEvaluationError(error),
   }
-}
-
-function errorName(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'name' in error) {
-    const name = (error as { name?: unknown }).name
-    if (typeof name === 'string' && name !== '') {
-      return name
-    }
-  }
-
-  return error instanceof Error ? error.name : 'Error'
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function hasTimeoutCause(error: unknown): boolean {
@@ -290,8 +275,7 @@ async function downloadPhotos(
 
       photos.push(await downloadPhoto(photoRef))
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      console.warn(`post ${link}: skipped photo: ${message}`)
+      console.warn(`post ${link}: skipped photo: ${errorMessage(error)}`)
     }
   }
 
@@ -323,19 +307,7 @@ function logStep(
   }
 }
 
-interface EvaluationStep {
-  stepNumber: number
-  finishReason: string
-  usage: {
-    inputTokens: number | undefined
-    outputTokens: number | undefined
-    outputTokenDetails: { reasoningTokens: number | undefined }
-  }
-  performance: { stepTimeMs: number }
-  content: ReadonlyArray<{
-    type: string
-    toolName?: string
-    input?: unknown
-    error?: unknown
-  }>
-}
+/** The step the SDK hands to onStepEnd, so this never drifts from the installed ai version. */
+type EvaluationStep = Parameters<
+  NonNullable<Parameters<typeof generateText>[0]['onStepEnd']>
+>[0]

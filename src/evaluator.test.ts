@@ -43,8 +43,9 @@ describe('Evaluator', () => {
       captureException: vi.fn(),
     }
     const evaluator = createEvaluator(
-      { modelId: 'test/model', promptPath, criteriaPath, model },
+      { modelId: 'test/model', promptPath, criteriaPath },
       {
+        model,
         errorReporter,
         retryPolicy: { attempts: 1, backoffsMs: [], timeoutMs: 100, maxSteps: 8 },
       },
@@ -113,8 +114,9 @@ describe('Evaluator', () => {
     })
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     const evaluator = createEvaluator(
-      { modelId: 'test/model', promptPath, criteriaPath, model },
+      { modelId: 'test/model', promptPath, criteriaPath },
       {
+        model,
         tools: createEvaluatorTools({ geocode, inZone }),
       },
     )
@@ -125,7 +127,7 @@ describe('Evaluator', () => {
     })).resolves.toEqual({ match: true, notes: 'In Old Batumi' })
 
     expect(geocode).toHaveBeenCalledWith('Gorgasali 33', expect.anything())
-    expect(inZone).toHaveBeenCalledWith(41.6481086, 41.6393883)
+    expect(inZone).toHaveBeenCalledWith({ lat: 41.6481086, lon: 41.6393883 })
     expect(model.doGenerateCalls).toHaveLength(3)
     expect(model.doGenerateCalls[1].prompt).toContainEqual(
       expect.objectContaining({ role: 'tool' }),
@@ -166,8 +168,8 @@ describe('Evaluator', () => {
       throw new Error('provider unavailable')
     })
     const evaluator = createEvaluator(
-      { modelId: 'test/model', promptPath, criteriaPath, model },
-      { tools: createEvaluatorTools({ geocode, inZone: () => ({ inside: false, zone: null }) }) },
+      { modelId: 'test/model', promptPath, criteriaPath },
+      { model, tools: createEvaluatorTools({ geocode, inZone: () => ({ inside: false, zone: null }) }) },
     )
 
     await expect(evaluator.evaluate({ text: 'Flat' })).resolves.toEqual({
@@ -208,8 +210,9 @@ describe('Evaluator', () => {
     })
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     const evaluator = createEvaluator(
-      { modelId: 'test/model', promptPath, criteriaPath, model },
+      { modelId: 'test/model', promptPath, criteriaPath },
       {
+        model,
         tools: createEvaluatorTools({
           geocode: vi.fn(async () => ({ results: [] })),
           inZone: () => ({ inside: false, zone: null }),
@@ -235,12 +238,10 @@ describe('Evaluator', () => {
       { match: true, notes: 'First notes' },
       { match: false, notes: 'Second notes' },
     )
-    const evaluator = createEvaluator({
-      modelId: 'test/model',
-      promptPath,
-      criteriaPath,
-      model,
-    })
+    const evaluator = createEvaluator(
+      { modelId: 'test/model', promptPath, criteriaPath },
+      { model },
+    )
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     await expect(evaluator.evaluate({ text: 'First Post' })).resolves.toEqual({
@@ -283,8 +284,8 @@ describe('Evaluator', () => {
       .mockResolvedValueOnce(new Uint8Array([3, 4]))
     const model = modelFor({ match: true, notes: 'Looks good' })
     const evaluator = createEvaluator(
-      { modelId: 'test/model', promptPath, criteriaPath, model },
-      { downloadPhoto },
+      { modelId: 'test/model', promptPath, criteriaPath },
+      { model, downloadPhoto },
     )
 
     await expect(
@@ -336,10 +337,11 @@ describe('Evaluator', () => {
     })
     const model = modelFor({ match: true, notes: 'Should not run' })
     const evaluator = createEvaluator(
-      { modelId: 'test/model', promptPath, criteriaPath, model },
-      { downloadPhoto },
+      { modelId: 'test/model', promptPath, criteriaPath },
+      { model, downloadPhoto },
     )
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 
     await expect(
       evaluator.evaluate({
@@ -353,6 +355,10 @@ describe('Evaluator', () => {
     expect(warn).toHaveBeenCalledWith(
       'post https://t.me/example/51: skipped photo: expired file reference',
     )
+    expect(log).toHaveBeenCalledWith(
+      'post https://t.me/example/51: nothing left to evaluate, no model call',
+    )
+    log.mockRestore()
     warn.mockRestore()
   })
 })

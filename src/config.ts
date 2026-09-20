@@ -6,6 +6,7 @@ export const CRITERIA_PATH = 'data/criteria.md'
 export const PROMPT_PATH = 'data/prompt.md'
 export const ZONE_PATH = 'data/zone.geojson'
 export const BOT_DATABASE_PATH = 'data/bot.sqlite'
+export const MAX_PHOTOS = 6
 
 export interface Settings {
   apiId: number

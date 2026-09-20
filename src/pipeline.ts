@@ -1,6 +1,6 @@
 import { isWatchedPost } from './channel-filter.js'
 import { postKey, type DedupeStore } from './dedupe-store.js'
-import type { EvaluationFailure, Evaluator, Verdict } from './evaluator.js'
+import { evaluationFailure, type EvaluationFailure, type Evaluator, type Verdict } from './evaluator.js'
 import { createSentryReporter, type ErrorReporter } from './sentry.js'
 import type { Post, Telegram } from './telegram.js'
 
@@ -57,7 +57,16 @@ async function processQueuedPost(
     return
   }
 
-  const verdict = await options.evaluator.evaluate(post)
+  // The Evaluator turns its own failures into a Verdict; an unexpected throw must
+  // still reach the Notifier and be marked processed, so nothing is silently lost.
+  let verdict: Verdict
+  try {
+    verdict = await options.evaluator.evaluate(post)
+  } catch (error) {
+    console.error(`post ${post.link}: evaluation threw`, error)
+    errorReporter.captureException(error, { postLink: post.link, phase: 'evaluation' })
+    verdict = evaluationFailure(error)
+  }
 
   try {
     const notification = notificationFor(post, verdict)

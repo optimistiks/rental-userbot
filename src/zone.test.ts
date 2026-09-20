@@ -81,11 +81,11 @@ describe('createZoneChecker', () => {
   it('answers known points from the starting Zone', () => {
     const checker = createZoneChecker(join(process.cwd(), 'data.example/zone.geojson'))
 
-    expect(checker.inZone(41.6437281, 41.6322006)).toEqual({
+    expect(checker.inZone({ lat: 41.6437281, lon: 41.6322006 })).toEqual({
       inside: true,
       zone: 'Rustaveli',
     })
-    expect(checker.inZone(41.6400004, 41.622037)).toEqual({
+    expect(checker.inZone({ lat: 41.6400004, lon: 41.622037 })).toEqual({
       inside: false,
       zone: null,
     })
@@ -95,13 +95,13 @@ describe('createZoneChecker', () => {
     const path = writeZone({ type: 'FeatureCollection', features: [polygon('First')] })
     const checker = createZoneChecker(path)
 
-    expect(checker.inZone(0.5, 0.5)).toEqual({ inside: true, zone: 'First' })
+    expect(checker.inZone({ lat: 0.5, lon: 0.5 })).toEqual({ inside: true, zone: 'First' })
     writeFileSync(path, JSON.stringify({
       type: 'FeatureCollection',
       features: [polygon('Second', [[10, 10], [11, 10], [11, 11], [10, 11], [10, 10]])],
     }))
 
-    expect(checker.inZone(0.5, 0.5)).toEqual({ inside: false, zone: null })
-    expect(checker.inZone(10.5, 10.5)).toEqual({ inside: true, zone: 'Second' })
+    expect(checker.inZone({ lat: 0.5, lon: 0.5 })).toEqual({ inside: false, zone: null })
+    expect(checker.inZone({ lat: 10.5, lon: 10.5 })).toEqual({ inside: true, zone: 'Second' })
   })
 })

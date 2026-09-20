@@ -8,6 +8,7 @@ import {
   type SessionClient,
   type TelegramClientLike,
 } from './telegram.js'
+import { errorMessage } from './errors.js'
 import { createGeocoder } from './geocoder.js'
 import { createPostPipeline } from './pipeline.js'
 import { initializeSentry, type ErrorReporter } from './sentry.js'
@@ -60,7 +61,7 @@ export async function runDaemon(
         downloadPhoto: telegram.downloadPhoto,
         tools: createEvaluatorTools({
           geocode: (query, signal) => geocoder.geocode(query, signal),
-          inZone: (lat, lon) => zoneChecker.inZone(lat, lon),
+          inZone: (point) => zoneChecker.inZone(point),
         }),
         errorReporter,
       }),
@@ -107,8 +108,7 @@ export async function start(
     if (argv[2] !== 'login') {
       (errorReporter ?? initializeSentry(env.SENTRY_DSN)).captureException(error)
     }
-    const message = error instanceof Error ? error.message : String(error)
-    console.error(message)
+    console.error(errorMessage(error))
     process.exitCode = 1
   }
 }

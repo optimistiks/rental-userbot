@@ -27,6 +27,45 @@ function post(chatId: number, text: string, id: number): Post {
 }
 
 describe('Post pipeline', () => {
+  it('still notifies and marks the Post when the Evaluator throws', async () => {
+    const errorReporter: ErrorReporter = {
+      enabled: true,
+      run: vi.fn(async (_link, operation) => operation()),
+      captureException: vi.fn(),
+    }
+    const dedupeStore = openDedupeStore(':memory:')
+    const evaluator = {
+      evaluate: vi.fn(async () => {
+        throw new Error('evaluator exploded')
+      }),
+    }
+    const telegram = { sendToMe: vi.fn(async () => undefined) }
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const pipeline = createPostPipeline({
+      channelIds: [-1001234567890],
+      evaluator,
+      telegram,
+      dedupeStore,
+      errorReporter,
+    })
+
+    await pipeline.process(post(-1001234567890, 'Flat for rent', 77))
+
+    expect(telegram.sendToMe).toHaveBeenCalledWith(
+      'https://t.me/example/77\n⚠️ couldn\'t evaluate: Error: evaluator exploded',
+    )
+    expect(dedupeStore.isProcessed('-1001234567890:77')).toBe(true)
+    expect(errorReporter.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      { postLink: 'https://t.me/example/77', phase: 'evaluation' },
+    )
+
+    error.mockRestore()
+    log.mockRestore()
+    dedupeStore.close()
+  })
+
   it('reports a failed notification with the Post link without blocking the queue', async () => {
     const errorReporter: ErrorReporter = {
       enabled: true,
@@ -111,8 +150,8 @@ describe('Post pipeline', () => {
     const telegram = { sendToMe: vi.fn(async () => undefined) }
     const dedupeStore = openDedupeStore(':memory:')
     const evaluator = createEvaluator(
-      { modelId: 'test/model', promptPath, criteriaPath, model },
-      { tools: createEvaluatorTools({ geocode, inZone }) },
+      { modelId: 'test/model', promptPath, criteriaPath },
+      { model, tools: createEvaluatorTools({ geocode, inZone }) },
     )
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
@@ -154,12 +193,10 @@ describe('Post pipeline', () => {
     })
     const telegram = { sendToMe: vi.fn(async () => undefined) }
     const dedupeStore = openDedupeStore(':memory:')
-    const evaluator = createEvaluator({
-      modelId: 'test/model',
-      promptPath,
-      criteriaPath,
-      model,
-    })
+    const evaluator = createEvaluator(
+      { modelId: 'test/model', promptPath, criteriaPath },
+      { model },
+    )
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
       evaluator,
@@ -217,8 +254,8 @@ describe('Post pipeline', () => {
     }
     const dedupeStore = openDedupeStore(':memory:')
     const evaluator = createEvaluator(
-      { modelId: 'test/model', promptPath, criteriaPath, model },
-      { downloadPhoto },
+      { modelId: 'test/model', promptPath, criteriaPath },
+      { model, downloadPhoto },
     )
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],
@@ -275,8 +312,8 @@ describe('Post pipeline', () => {
     })
     const dedupeStore = openDedupeStore(':memory:')
     const evaluator = createEvaluator(
-      { modelId: 'test/model', promptPath, criteriaPath, model },
-      { downloadPhoto },
+      { modelId: 'test/model', promptPath, criteriaPath },
+      { model, downloadPhoto },
     )
     const pipeline = createPostPipeline({
       channelIds: [-1001234567890],

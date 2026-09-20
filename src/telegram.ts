@@ -1,7 +1,7 @@
 import { TelegramClient } from '@mtcute/node'
 import type { FileDownloadLocation, Message } from '@mtcute/node'
 
-import type { LoginSettings, Settings } from './config.js'
+import { MAX_PHOTOS, type LoginSettings, type Settings } from './config.js'
 
 export const SESSION_PATH = 'data/session.sqlite'
 export const MESSAGE_GROUPING_INTERVAL = 1000
@@ -95,7 +95,6 @@ export async function startDaemonSession(client: SessionClient): Promise<void> {
   await client.start(daemonStartParams)
 }
 
-const MAX_PHOTOS = 6
 
 export function createTelegramAdapter(client: TelegramClientLike): Telegram {
   const postHandlers: Array<(post: Post) => void> = []

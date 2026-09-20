@@ -65,3 +65,7 @@ Kept as decision rules in the prompt: rental offers only; lenient matching; `not
 - 3 steps, 9.1s, 2,011 input / 447 output tokens (332 of them reasoning).
 - Intermediate steps produced **no visible text** (hidden reasoning), which is why reasoning summaries are switched on.
 
+
+## Comments
+
+- 2026-09-20 (post-review): a two-axis code review of the implementation found no broken rule. Fixed afterwards: an Evaluator throw now still reaches the Notifier and marks the Post processed; the "nothing left to evaluate" case is logged; the Zone reader no longer accepts a bare geometry (which produced `{ inside: true, zone: null }`). The agent still owns the Verdict outright.
