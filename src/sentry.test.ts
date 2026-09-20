@@ -1,10 +1,25 @@
+import type { Mock } from "vitest";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { SentryApi } from "./sentry.js";
 
 import { createSentryReporter, sanitizeSentryText } from "./sentry.js";
 
-function fakeSentry() {
+interface FakeSentry {
+  captureException: Mock<SentryApi["captureException"]>;
+  events: string[];
+  experimentalUseDiagnosticsChannelInjection: Mock<
+    SentryApi["experimentalUseDiagnosticsChannelInjection"]
+  >;
+  init: Mock<SentryApi["init"]>;
+  readonly initOptions: Record<string, unknown> | undefined;
+  scopeContext: Mock<(name: string, context: unknown) => void>;
+  startSpan: Mock<(options: unknown, callback: (span: unknown) => unknown) => unknown>;
+  withScope: Mock<(callback: (scope: unknown) => unknown) => unknown>;
+}
+
+function fakeSentry(): FakeSentry {
   const events: string[] = [];
   const scopeContext = vi.fn<(name: string, context: unknown) => void>();
   let initOptions: Record<string, unknown> | undefined;
@@ -36,6 +51,12 @@ function fakeSentry() {
       callback({ setContext: scopeContext }),
     ),
   };
+}
+
+/** Runs the span body, then fails the span the way Sentry would on a thrown error. */
+function failAfterCalling(callback: (span: unknown) => unknown): never {
+  callback({});
+  throw new Error("span failed");
 }
 
 describe("sentry reporter", () => {
@@ -131,10 +152,7 @@ describe("sentry reporter", () => {
     expect.hasAssertions();
     const sentry = fakeSentry();
     const operation = vi.fn<() => Promise<string>>(() => Promise.resolve("done"));
-    sentry.startSpan.mockImplementation((_options, callback) => {
-      callback({});
-      throw new Error("span failed");
-    });
+    sentry.startSpan.mockImplementation((_options, callback) => failAfterCalling(callback));
     const reporter = createSentryReporter(
       "https://public@example.com/1",
       sentry as unknown as SentryApi,

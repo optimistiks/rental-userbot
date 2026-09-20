@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
 import { acquireSessionLock } from "./session-lock.js";
 
 function lockPath(): string {
-  return path.join(mkdtempSync(path.join(tmpdir(), "rental-userbot-")), "session.lock");
+  const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+  return path.join(directory, "session.lock");
 }
 
 describe("acquireSessionLock", () => {

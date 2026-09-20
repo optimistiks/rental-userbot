@@ -77,8 +77,8 @@ describe("readSettings", () => {
     "names missing required setting %s",
     (name) => {
       expect.hasAssertions();
-      const environment = { ...validEnvironment };
-      delete environment[name as keyof typeof environment];
+      const { [name as keyof typeof validEnvironment]: _omitted, ...environment } =
+        validEnvironment;
 
       expect(() => readSettings(environment)).toThrow(new RegExp(`${name} is required`, "u"));
     },
@@ -86,15 +86,13 @@ describe("readSettings", () => {
 
   it("rejects malformed API_ID", () => {
     expect.hasAssertions();
-    expect(() => readSettings({ ...validEnvironment, API_ID: "not-a-number" })).toThrow(
-      new RegExp("API_ID", "u"),
-    );
+    expect(() => readSettings({ ...validEnvironment, API_ID: "not-a-number" })).toThrow(/API_ID/u);
   });
 
   it("rejects unmarked channel IDs", () => {
     expect.hasAssertions();
     expect(() => readSettings({ ...validEnvironment, CHANNEL_IDS: "12345" })).toThrow(
-      new RegExp("CHANNEL_IDS", "u"),
+      /CHANNEL_IDS/u,
     );
   });
 });

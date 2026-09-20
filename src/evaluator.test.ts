@@ -15,7 +15,7 @@ const usage = {
   outputTokens: { reasoning: undefined, text: 5, total: 5 },
 };
 
-function modelFor(...verdicts: { match: boolean; notes: string }[]) {
+function modelFor(...verdicts: { match: boolean; notes: string }[]): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     doGenerate: verdicts.map((verdict) => ({
       content: [{ text: JSON.stringify(verdict), type: "text" as const }],
@@ -356,10 +356,11 @@ describe("evaluator", () => {
     expect(prompt).toHaveLength(2);
     expect(prompt?.[0]).toStrictEqual(expect.objectContaining({ role: "system" }));
     expect(prompt?.[1]).toStrictEqual(expect.objectContaining({ role: "user" }));
-    const userContent = (prompt?.[1] as { content: unknown[] }).content;
+    const [, userMessage] = prompt ?? [];
+    const userContent = (userMessage as { content: unknown[] }).content;
     expect(userContent[0]).toStrictEqual({
       providerOptions: undefined,
-      text: expect.stringContaining("Flat with photos"),
+      text: expect.stringContaining("Flat with photos") as string,
       type: "text",
     });
     expect(userContent[1]).toStrictEqual(

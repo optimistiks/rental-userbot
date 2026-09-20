@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import type { ZoneFeature } from "./zone.js";
+
 import { createZoneChecker, readZoneFile } from "./zone.js";
 
 const polygon = (
@@ -14,7 +16,7 @@ const polygon = (
     [0, 1],
     [0, 0],
   ],
-) => ({
+): ZoneFeature => ({
   geometry: { coordinates: [coordinates], type: "Polygon" },
   properties: { name },
   type: "Feature",

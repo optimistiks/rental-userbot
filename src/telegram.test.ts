@@ -59,7 +59,7 @@ describe("telegram client setup", () => {
   it("sleeps through flood waits instead of dying mid-flood", () => {
     expect.hasAssertions();
     expect(telegramClientOptions(settings)).toMatchObject({
-      network: { middlewares: expect.any(Array) },
+      network: { middlewares: expect.any(Array) as unknown[] },
     });
     expect(MAX_FLOOD_WAIT_MS).toBeGreaterThan(10_000);
   });

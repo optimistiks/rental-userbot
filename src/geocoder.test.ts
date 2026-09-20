@@ -153,9 +153,11 @@ describe("geocoder", () => {
     it("passes an abort signal through to fetch for the tool timeout", async () => {
       expect.hasAssertions();
       let signal: AbortSignal | null | undefined;
-      const fetcher = vi.fn<Fetcher>(async (_input, init) => {
+      const fetcher = vi.fn<Fetcher>((_input, init) => {
         signal = init?.signal;
-        throw new Error("aborted https://geocoder.test/v1/search?key=secret-token");
+        return Promise.reject(
+          new Error("aborted https://geocoder.test/v1/search?key=secret-token"),
+        );
       });
       const geocoder = createGeocoder(
         { token: "secret-token", url: "https://geocoder.test/v1/search" },

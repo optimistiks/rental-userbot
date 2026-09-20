@@ -46,21 +46,21 @@ function evaluatorFiles(): { promptPath: string; criteriaPath: string } {
 
 /** Never resolves: rejects when the signal aborts, or at once if it is missing or already aborted. */
 function rejectWhenAborted(abortSignal: AbortSignal | undefined): Promise<never> {
-  return new Promise<never>((_, reject) => {
+  return new Promise<never>((_resolve, reject) => {
     if (abortSignal === undefined) {
       reject(new Error("abort signal was not provided"));
       return;
     }
 
     if (abortSignal.aborted) {
-      reject(abortSignal.reason);
+      reject(abortSignal.reason as Error);
       return;
     }
 
     abortSignal.addEventListener(
       "abort",
       () => {
-        reject(abortSignal.reason);
+        reject(abortSignal.reason as Error);
       },
       { once: true },
     );
@@ -251,7 +251,7 @@ describe("failure paths", () => {
     );
 
     await expect(evaluator.evaluate({ ...post(30) })).resolves.toMatchObject({
-      error: expect.stringContaining("AI_NoObjectGeneratedError"),
+      error: expect.stringContaining("AI_NoObjectGeneratedError") as string,
       kind: "evaluation-failure",
     });
     expect(model.doGenerateCalls).toHaveLength(3);
@@ -276,7 +276,7 @@ describe("failure paths", () => {
     );
 
     await expect(evaluator.evaluate({ ...post(31) })).resolves.toMatchObject({
-      error: expect.stringMatching(/^timeout:/u),
+      error: expect.stringMatching(/^timeout:/u) as string,
       kind: "evaluation-failure",
     });
     expect(model.doGenerateCalls).toHaveLength(3);
@@ -303,7 +303,7 @@ describe("failure paths", () => {
     );
 
     await expect(evaluator.evaluate({ ...post(4) })).resolves.toMatchObject({
-      error: expect.stringContaining("Criteria file"),
+      error: expect.stringContaining("Criteria file") as string,
       kind: "evaluation-failure",
     });
     expect(model.doGenerateCalls).toHaveLength(0);
