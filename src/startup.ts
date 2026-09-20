@@ -4,6 +4,7 @@ import type { Telegram } from "./telegram.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
 import { readCriteriaFile, readPromptFile } from "./text-file.js";
+import { readWatchlistFile } from "./watchlist.js";
 import { readZoneFile } from "./zone.js";
 
 interface StartupResources {
@@ -11,11 +12,13 @@ interface StartupResources {
 }
 
 function initializeStartup(settings: Settings, databasePath?: string): StartupResources {
-  // Read-and-discard: the Evaluator re-reads both before every run, so this is
-  // Only the startup check that they exist and parse.
+  // Read-and-discard: every one of these is re-read while the bot runs, so this is
+  // Only the startup check that they exist and parse. A watchlist missing here means
+  // The setup was never finished; one that vanishes later just means watching nothing.
   readCriteriaFile(settings.criteriaPath);
   readPromptFile(settings.promptPath);
   readZoneFile(settings.zonePath);
+  readWatchlistFile(settings.channelsPath);
   return { dedupeStore: openDedupeStore(databasePath) };
 }
 

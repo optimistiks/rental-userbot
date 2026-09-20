@@ -50,12 +50,14 @@ describe("runDaemon", () => {
     expect.hasAssertions();
     const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
     const criteriaPath = path.join(directory, "criteria.md");
+    const channelsPath = path.join(directory, "channels.txt");
     writeFileSync(criteriaPath, "Criteria");
+    writeFileSync(channelsPath, "-1001234567890\n");
     const settings = {
       aiGatewayApiKey: "gateway-key",
       apiHash: "hash",
       apiId: 123_456,
-      channelIds: [-1_001_234_567_890],
+      channelsPath,
       criteriaPath,
       geocoderUrl: "http://localhost:1234/search",
       locationIqToken: "locationiq-token",
@@ -101,12 +103,14 @@ describe("runDaemon", () => {
     expect.hasAssertions();
     const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
     const criteriaPath = path.join(directory, "criteria.md");
+    const channelsPath = path.join(directory, "channels.txt");
     writeFileSync(criteriaPath, "Criteria");
+    writeFileSync(channelsPath, "-1001234567890\n");
     const settings = {
       aiGatewayApiKey: "gateway-key",
       apiHash: "hash",
       apiId: 123_456,
-      channelIds: [-1_001_234_567_890],
+      channelsPath,
       criteriaPath,
       geocoderUrl: "http://localhost:1234/search",
       locationIqToken: "locationiq-token",

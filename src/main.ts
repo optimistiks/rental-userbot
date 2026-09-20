@@ -11,6 +11,7 @@ import { initializeSentry } from "./sentry.js";
 import { acquireSessionLock } from "./session-lock.js";
 import { announceStartup, initializeStartup } from "./startup.js";
 import { createTelegramAdapter, createTelegramClient, startDaemonSession } from "./telegram.js";
+import { createWatchlist } from "./watchlist.js";
 import { createZoneChecker } from "./zone.js";
 
 type ManagedClient = TelegramClientLike &
@@ -51,14 +52,14 @@ async function runDaemon(
     client = makeClient(settings);
     await startDaemonSession(client);
     const telegram = createTelegramAdapter(client);
-    await announceStartup(telegram, settings.channelIds);
+    const watchlist = createWatchlist(settings.channelsPath);
+    await announceStartup(telegram, watchlist.channelIds());
     const geocoder = createGeocoder({
       token: settings.locationIqToken,
       url: settings.geocoderUrl,
     });
     const zoneChecker = createZoneChecker(settings.zonePath);
     const pipeline = createPostPipeline({
-      channelIds: settings.channelIds,
       dedupeStore: resources.dedupeStore,
       errorReporter,
       evaluator: createEvaluator(settings, {
@@ -70,6 +71,7 @@ async function runDaemon(
         }),
       }),
       telegram,
+      watchlist,
     });
     telegram.onPost((post) => {
       /* The onPost callback returns void, so the pipeline promise is deliberately

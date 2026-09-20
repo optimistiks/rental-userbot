@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { EvaluationFailure, Evaluator, RetryPolicy } from "./evaluator.js";
 import type { Post, Telegram } from "./telegram.js";
+import type { Watchlist } from "./watchlist.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
 import { createEvaluator, formatEvaluationError } from "./evaluator.js";
@@ -19,6 +20,8 @@ type GenerateResult = Awaited<
     >
   >
 >;
+
+const staticWatchlist: Watchlist = { channelIds: () => [-1_001_234_567_890] };
 
 const usage = {
   inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
@@ -180,13 +183,13 @@ describe("failure paths", () => {
       /* Keep test output quiet. */
     });
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator: createEvaluator(
         { modelId: "test/model", ...files },
         { model, retryPolicy: retryPolicy() },
       ),
       telegram,
+      watchlist: staticWatchlist,
     });
 
     await pipeline.process(post(25));
@@ -328,13 +331,13 @@ describe("failure paths", () => {
       /* Keep test output quiet. */
     });
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator: createEvaluator(
         { modelId: "test/model", ...files },
         { model, retryPolicy: retryPolicy() },
       ),
       telegram,
+      watchlist: staticWatchlist,
     });
 
     await pipeline.process(post(5));
@@ -371,10 +374,10 @@ describe("failure paths", () => {
       /* Keep test output quiet. */
     });
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
+      watchlist: staticWatchlist,
     });
 
     await Promise.all([pipeline.process(post(6)), pipeline.process(post(7))]);
@@ -411,10 +414,10 @@ describe("failure paths", () => {
       /* Keep test output quiet. */
     });
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
+      watchlist: staticWatchlist,
     });
 
     await pipeline.process(post(8));

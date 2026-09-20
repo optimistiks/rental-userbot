@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHANNELS_PATH,
   CRITERIA_PATH,
   GEOCODER_URL,
   MODEL_ID,
@@ -14,7 +15,6 @@ const validEnvironment = {
   AI_GATEWAY_API_KEY: "gateway-key",
   API_HASH: "hash",
   API_ID: "123456",
-  CHANNEL_IDS: "-1001234567890, -1009876543210",
   LOCATIONIQ_TOKEN: "locationiq-token",
 };
 
@@ -29,13 +29,13 @@ describe("readSettings", () => {
     ).toStrictEqual({ apiHash: "hash", apiId: 123_456 });
   });
 
-  it("reads required settings, parses marked channel IDs, and applies defaults", () => {
+  it("reads required settings and applies defaults", () => {
     expect.hasAssertions();
     expect(readSettings(validEnvironment)).toStrictEqual({
       aiGatewayApiKey: "gateway-key",
       apiHash: "hash",
       apiId: 123_456,
-      channelIds: [-1_001_234_567_890, -1_009_876_543_210],
+      channelsPath: CHANNELS_PATH,
       criteriaPath: CRITERIA_PATH,
       geocoderUrl: GEOCODER_URL,
       locationIqToken: "locationiq-token",
@@ -50,6 +50,7 @@ describe("readSettings", () => {
     expect(
       readSettings({
         ...validEnvironment,
+        CHANNELS_PATH: "/tmp/channels.txt",
         CRITERIA_PATH: "/tmp/criteria.md",
         GEOCODER_URL: "http://localhost:1234/search",
         MODEL_ID: "test/model",
@@ -57,6 +58,7 @@ describe("readSettings", () => {
         ZONE_PATH: "/tmp/zone.geojson",
       }),
     ).toMatchObject({
+      channelsPath: "/tmp/channels.txt",
       criteriaPath: "/tmp/criteria.md",
       geocoderUrl: "http://localhost:1234/search",
       modelId: "test/model",
@@ -73,7 +75,7 @@ describe("readSettings", () => {
     ).toBe("https://public@example.com/1");
   });
 
-  it.each(["API_ID", "API_HASH", "CHANNEL_IDS", "AI_GATEWAY_API_KEY", "LOCATIONIQ_TOKEN"])(
+  it.each(["API_ID", "API_HASH", "AI_GATEWAY_API_KEY", "LOCATIONIQ_TOKEN"])(
     "names missing required setting %s",
     (name) => {
       expect.hasAssertions();
@@ -87,12 +89,5 @@ describe("readSettings", () => {
   it("rejects malformed API_ID", () => {
     expect.hasAssertions();
     expect(() => readSettings({ ...validEnvironment, API_ID: "not-a-number" })).toThrow(/API_ID/u);
-  });
-
-  it("rejects unmarked channel IDs", () => {
-    expect.hasAssertions();
-    expect(() => readSettings({ ...validEnvironment, CHANNEL_IDS: "12345" })).toThrow(
-      /CHANNEL_IDS/u,
-    );
   });
 });

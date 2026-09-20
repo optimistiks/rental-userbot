@@ -12,11 +12,12 @@ const settings = (
   criteriaPath: string,
   promptPath = criteriaPath,
   zonePath = path.join(process.cwd(), "data.example/zone.geojson"),
+  channelsPath = path.join(process.cwd(), "data.example/channels.txt"),
 ): Settings => ({
   aiGatewayApiKey: "gateway-key",
   apiHash: "hash",
   apiId: 123_456,
-  channelIds: [-1_001_234_567_890],
+  channelsPath,
   criteriaPath,
   geocoderUrl: "http://localhost:1234/search",
   locationIqToken: "locationiq-token",
@@ -69,6 +70,21 @@ describe("initializeStartup", () => {
     expect(() =>
       initializeStartup(settings(criteriaPath, promptPath, zonePath), ":memory:"),
     ).toThrow(new RegExp(`Zone file .*${zonePath}`, "u"));
+  });
+
+  it("names the Watchlist file when it is missing", () => {
+    expect.hasAssertions();
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const criteriaPath = path.join(directory, "criteria.md");
+    const promptPath = path.join(directory, "prompt.md");
+    const zonePath = path.join(process.cwd(), "data.example/zone.geojson");
+    const channelsPath = path.join(directory, "channels.txt");
+    writeFileSync(criteriaPath, "Criteria text");
+    writeFileSync(promptPath, "Prompt text");
+
+    expect(() =>
+      initializeStartup(settings(criteriaPath, promptPath, zonePath, channelsPath), ":memory:"),
+    ).toThrow(new RegExp(`Watchlist file .*${channelsPath}`, "u"));
   });
 });
 

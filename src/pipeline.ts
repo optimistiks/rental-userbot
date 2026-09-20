@@ -2,6 +2,7 @@ import type { DedupeStore } from "./dedupe-store.js";
 import type { EvaluationFailure, Evaluator, Verdict } from "./evaluator.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { Post, Telegram } from "./telegram.js";
+import type { Watchlist } from "./watchlist.js";
 
 import { isWatchedPost } from "./channel-filter.js";
 import { postKey } from "./dedupe-store.js";
@@ -13,7 +14,7 @@ interface PostPipeline {
 }
 
 interface PostPipelineOptions {
-  channelIds: readonly number[];
+  watchlist: Watchlist;
   evaluator: Evaluator;
   telegram: Pick<Telegram, "sendToMe">;
   dedupeStore: DedupeStore;
@@ -28,7 +29,8 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
 
   return {
     process(post) {
-      if (!isWatchedPost(post, options.channelIds)) {
+      // The watchlist is re-read here, so an edit to the file takes effect on this Post.
+      if (!isWatchedPost(post, options.watchlist.channelIds())) {
         return Promise.resolve();
       }
 

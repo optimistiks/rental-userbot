@@ -1,3 +1,6 @@
+/* The live-reload test drives the real Watchlist through the pipeline, one module past
+   the cap for this file; the alternative is a stub, which cannot prove a re-read. */
+// oxlint-disable import/max-dependencies
 import { MockLanguageModelV4 } from "ai/test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,15 +15,19 @@ import type {
 } from "./evaluator.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef, Post, Telegram } from "./telegram.js";
+import type { Watchlist } from "./watchlist.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
 import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
 import { createPostPipeline } from "./pipeline.js";
+import { createWatchlist } from "./watchlist.js";
 
 const usage = {
   inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
   outputTokens: { reasoning: undefined, text: 5, total: 5 },
 };
+
+const staticWatchlist: Watchlist = { channelIds: () => [-1_001_234_567_890] };
 
 function post(chatId: number, text: string, id: number): Post {
   return {
@@ -52,11 +59,11 @@ describe("post pipeline", () => {
       /* Keep test output quiet. */
     });
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       errorReporter,
       evaluator,
       telegram,
+      watchlist: staticWatchlist,
     });
 
     await pipeline.process(post(-1_001_234_567_890, "Flat for rent", 77));
@@ -97,11 +104,11 @@ describe("post pipeline", () => {
       /* Keep test output quiet. */
     });
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       errorReporter,
       evaluator,
       telegram,
+      watchlist: staticWatchlist,
     });
 
     await expect(
@@ -182,10 +189,10 @@ describe("post pipeline", () => {
       { model, tools: createEvaluatorTools({ geocode, inZone }) },
     );
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
+      watchlist: staticWatchlist,
     });
 
     await pipeline.process(post(-1_001_234_567_890, "Flat at Gorgasali 33", 10));
@@ -227,10 +234,10 @@ describe("post pipeline", () => {
       { model },
     );
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
+      watchlist: staticWatchlist,
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -282,10 +289,10 @@ describe("post pipeline", () => {
       { downloadPhoto, model },
     );
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
+      watchlist: staticWatchlist,
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -341,10 +348,10 @@ describe("post pipeline", () => {
       { downloadPhoto, model },
     );
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      watchlist: staticWatchlist,
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -381,10 +388,10 @@ describe("post pipeline", () => {
       }),
     };
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      watchlist: staticWatchlist,
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -436,10 +443,10 @@ describe("post pipeline", () => {
         }),
     };
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      watchlist: staticWatchlist,
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -469,10 +476,10 @@ describe("post pipeline", () => {
       ),
     };
     const firstPipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator: firstEvaluator,
       telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      watchlist: staticWatchlist,
     });
     const log = vi.spyOn(console, "log").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -487,10 +494,10 @@ describe("post pipeline", () => {
       ),
     };
     const secondPipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator: secondEvaluator,
       telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      watchlist: staticWatchlist,
     });
 
     await secondPipeline.process(firstPost);
@@ -515,10 +522,10 @@ describe("post pipeline", () => {
       ),
     };
     const pipeline = createPostPipeline({
-      channelIds: [-1_001_234_567_890],
       dedupeStore,
       evaluator,
       telegram,
+      watchlist: staticWatchlist,
     });
     const postToProcess = post(-1_001_234_567_890, "Flat for rent", 9);
 
@@ -528,6 +535,45 @@ describe("post pipeline", () => {
     expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
     expect(dedupeStore.isProcessed("-1001234567890:9")).toBe(true);
+    dedupeStore.close();
+  });
+
+  it("watches a channel added to the watchlist file and drops one removed from it", async () => {
+    expect.hasAssertions();
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const channelsPath = path.join(directory, "channels.txt");
+    writeFileSync(channelsPath, "-1001234567890  # watched for now\n");
+    const dedupeStore = openDedupeStore(":memory:");
+    const evaluator = {
+      evaluate: vi.fn<Evaluator["evaluate"]>(() =>
+        Promise.resolve({ match: true, notes: "Looks good" }),
+      ),
+    };
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
+    const pipeline = createPostPipeline({
+      dedupeStore,
+      evaluator,
+      telegram,
+      watchlist: createWatchlist(channelsPath),
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+
+    await pipeline.process(post(-1_001_234_567_890, "Flat for rent", 30));
+
+    expect(telegram.sendToMe).toHaveBeenCalledWith("https://t.me/example/30\nLooks good");
+
+    writeFileSync(channelsPath, "-1009876543210\n");
+
+    await pipeline.process(post(-1_001_234_567_890, "Another flat", 31));
+
+    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
+    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(
+      "watchlist: watching 1 channel; added -1009876543210; removed -1001234567890",
+    );
+    log.mockRestore();
     dedupeStore.close();
   });
 });

@@ -13,7 +13,7 @@ A Post whose Verdict has been handled, whether it was a match, no match, or eval
 _Avoid_: seen, handled, done
 
 **Watched channel**:
-A channel whose ID the owner has listed for the bot to follow. Posts from any other chat are ignored.
+A channel whose ID the owner has listed in `data/channels.txt` for the bot to follow, one ID per line, edited without a restart. Posts from any other chat are ignored.
 _Avoid_: source, feed, subscribed channel
 
 **Listing**:

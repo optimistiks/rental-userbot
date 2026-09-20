@@ -1,0 +1,3 @@
+# One channel ID per line, each starting with -100.
+# Anything after a # is a comment, so you can label them:
+# -1001234567890  # Batumi rentals

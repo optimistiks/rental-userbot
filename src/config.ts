@@ -2,6 +2,7 @@ type ProcessEnv = NodeJS.ProcessEnv;
 
 const MODEL_ID = "google/gemini-3.8-flash";
 const GEOCODER_URL = "https://eu1.locationiq.com/v1/search";
+const CHANNELS_PATH = "data/channels.txt";
 const CRITERIA_PATH = "data/criteria.md";
 const PROMPT_PATH = "data/prompt.md";
 const ZONE_PATH = "data/zone.geojson";
@@ -12,7 +13,7 @@ const SESSION_LOCK_PATH = "data/session.lock";
 interface Settings {
   apiId: number;
   apiHash: string;
-  channelIds: number[];
+  channelsPath: string;
   aiGatewayApiKey: string;
   modelId: string;
   locationIqToken: string;
@@ -55,19 +56,6 @@ function positiveInteger(value: string, name: string): number {
   return parsed;
 }
 
-function channelIds(value: string): number[] {
-  const ids = value.split(",").map((part) => part.trim());
-  if (ids.some((id) => !/^-100\d+$/u.test(id))) {
-    throw new SettingsError("CHANNEL_IDS must be comma-separated marked channel IDs");
-  }
-
-  const parsed = ids.map(Number);
-  if (parsed.some((id) => !Number.isSafeInteger(id))) {
-    throw new SettingsError("CHANNEL_IDS contains an unsafe integer");
-  }
-  return parsed;
-}
-
 function optional(env: ProcessEnv, name: string, fallback: string): string {
   const value = env[name]?.trim();
   return value === undefined || value === "" ? fallback : value;
@@ -85,7 +73,7 @@ function readSettings(env: ProcessEnv = process.env): Settings {
   return {
     ...loginSettings,
     aiGatewayApiKey: required(env, "AI_GATEWAY_API_KEY"),
-    channelIds: channelIds(required(env, "CHANNEL_IDS")),
+    channelsPath: optional(env, "CHANNELS_PATH", CHANNELS_PATH),
     criteriaPath: optional(env, "CRITERIA_PATH", CRITERIA_PATH),
     geocoderUrl: optional(env, "GEOCODER_URL", GEOCODER_URL),
     locationIqToken: required(env, "LOCATIONIQ_TOKEN"),
@@ -106,6 +94,7 @@ function readLoginSettings(env: ProcessEnv = process.env): LoginSettings {
 export {
   MODEL_ID,
   GEOCODER_URL,
+  CHANNELS_PATH,
   CRITERIA_PATH,
   PROMPT_PATH,
   ZONE_PATH,

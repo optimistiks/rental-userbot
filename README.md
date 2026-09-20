@@ -10,7 +10,7 @@ makes the final call on its own; no rule in the code overrides it.
 
 ## What it does with a post
 
-1. A new post appears in one of the channels you listed. Anything from elsewhere is ignored.
+1. A new post appears in one of the channels listed in `data/channels.txt`. Anything from elsewhere is ignored.
 2. Posts already handled are skipped, even after a restart. An album counts as one post.
 3. The agent evaluates it against your criteria, one post at a time.
 4. A match arrives in Saved Messages as a link plus the agent's notes. Non-matches are silent.
@@ -37,6 +37,7 @@ Fill in `.env` (see [Environment variables](#environment-variables)), then edit 
 
 | File | What it is |
 |---|---|
+| `data/channels.txt` | The channels to watch, one ID per line. See [Listing your channels](#listing-your-channels). |
 | `data/criteria.md` | What you want in a flat, in plain language. The agent reads it before every post. |
 | `data/prompt.md` | How the agent works: look at photos, read the text, use the tools, decide. |
 | `data/zone.geojson` | The area you'll live in. Ships with the Old Batumi and Rustaveli outlines from OpenStreetMap; edit it at [geojson.io](https://geojson.io). |
@@ -89,13 +90,34 @@ docker compose run --rm userbot login
 docker compose up -d
 ```
 
-## Finding your channel IDs
+## Listing your channels
 
-`CHANNEL_IDS` takes the long numeric IDs, like `-1001234567890`. To find one, open the channel in
-[Telegram Web A](https://web.telegram.org/a) and read the number in the address bar. Whatever you use, the
-ID must start with `-100`.
+`data/channels.txt` holds one channel ID per line. The IDs are the long numeric ones, like
+`-1001234567890`: open the channel in [Telegram Web A](https://web.telegram.org/a) and read the number in
+the address bar. Whatever you use, the ID must start with `-100`.
 
-Your account has to have joined every channel it watches; the bot never joins anything by itself.
+```
+# Batumi
+-1001234567890  # Batumi rentals
+-1009876543210  # the noisy one
+
+# -1005555555555  parked for now
+```
+
+Anything after a `#` is a comment, blank lines are fine, and any line that isn't a marked channel ID is
+ignored — so a bad paste costs you nothing, and neither does an empty file, which simply watches nothing.
+
+Adding or removing a channel takes effect on the next post; nothing needs restarting. When the set of
+watched channels changes, the log says so:
+
+```
+watchlist: watching 2 channels; added -1009876543210; removed -1001234567890
+```
+
+Your account has to have joined every channel it watches; the bot never joins anything by itself. The
+membership check runs once, at startup, so a channel added while the bot is running is watched right away
+but isn't checked against your joined channels until the next restart — if you never joined it, it's just
+quiet.
 
 ## Environment variables
 
@@ -108,7 +130,6 @@ your account, so keep `data/` off any shared disk.
 |---|---|
 | `API_ID` | Telegram app ID, a number, from [my.telegram.org](https://my.telegram.org) |
 | `API_HASH` | Telegram app hash from the same page |
-| `CHANNEL_IDS` | The channels to watch, comma-separated, each starting with `-100` |
 | `AI_GATEWAY_API_KEY` | Vercel AI Gateway key |
 | `LOCATIONIQ_TOKEN` | LocationIQ token, used by the agent's geocoder tool |
 
@@ -118,6 +139,7 @@ your account, so keep `data/` off any shared disk.
 |---|---|---|
 | `MODEL_ID` | `google/gemini-3.8-flash` | Which model the agent runs on. It has to accept images. |
 | `GEOCODER_URL` | `https://eu1.locationiq.com/v1/search` | Where the geocoder tool searches |
+| `CHANNELS_PATH` | `data/channels.txt` | The channels to watch, one ID per line |
 | `CRITERIA_PATH` | `data/criteria.md` | Your criteria file |
 | `PROMPT_PATH` | `data/prompt.md` | The agent's instructions |
 | `ZONE_PATH` | `data/zone.geojson` | The area outline |
