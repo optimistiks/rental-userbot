@@ -10,6 +10,15 @@ import type { PhotoRef } from "./telegram.js";
 
 import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
 
+type GenerateResult = Awaited<
+  ReturnType<
+    Extract<
+      NonNullable<ConstructorParameters<typeof MockLanguageModelV4>[0]>["doGenerate"],
+      (options: never) => unknown
+    >
+  >
+>;
+
 const usage = {
   inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
   outputTokens: { reasoning: undefined, text: 5, total: 5 },
@@ -35,10 +44,10 @@ describe("evaluator", () => {
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const model = new MockLanguageModelV4({
-      doGenerate: () => Promise.reject(new Error("gateway failed")),
+      doGenerate: (): Promise<never> => Promise.reject(new Error("gateway failed")),
     });
-    // Vitest's Mock<T> cannot carry a generic signature, so run is mocked at
-    // The instantiation the Evaluator actually uses and widened back once.
+    // Vitest's Mock<T> cannot carry a generic signature, so run is mocked at the
+    // instantiation the evaluator uses, then widened back once.
     const run = vi.fn<(postLink: string, operation: () => Promise<unknown>) => Promise<unknown>>(
       async (_link, operation) => operation(),
     );

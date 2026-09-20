@@ -11,6 +11,15 @@ import { openDedupeStore } from "./dedupe-store.js";
 import { createEvaluator, formatEvaluationError } from "./evaluator.js";
 import { createPostPipeline } from "./pipeline.js";
 
+type GenerateResult = Awaited<
+  ReturnType<
+    Extract<
+      NonNullable<ConstructorParameters<typeof MockLanguageModelV4>[0]>["doGenerate"],
+      (options: never) => unknown
+    >
+  >
+>;
+
 const usage = {
   inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
   outputTokens: { reasoning: undefined, text: 5, total: 5 },
@@ -68,7 +77,7 @@ describe("failure paths", () => {
     expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
-      doGenerate: () => Promise.reject(new Error("gateway failed")),
+      doGenerate: (): Promise<never> => Promise.reject(new Error("gateway failed")),
     });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -95,17 +104,17 @@ describe("failure paths", () => {
     const files = evaluatorFiles();
     let attempts = 0;
     const model = new MockLanguageModelV4({
-      doGenerate: async () => {
+      doGenerate: (): Promise<GenerateResult> => {
         attempts += 1;
         if (attempts === 1) {
-          throw new Error("temporary gateway failure");
+          return Promise.reject(new Error("temporary gateway failure"));
         }
-        return {
+        return Promise.resolve({
           content: [{ text: JSON.stringify({ match: true, notes: "Recovered" }), type: "text" }],
           finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
-        };
+        });
       },
     });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
@@ -132,17 +141,17 @@ describe("failure paths", () => {
     const files = evaluatorFiles();
     let attempts = 0;
     const model = new MockLanguageModelV4({
-      doGenerate: async () => {
+      doGenerate: (): Promise<GenerateResult> => {
         attempts += 1;
         if (attempts === 1) {
-          throw new Error("temporary gateway failure");
+          return Promise.reject(new Error("temporary gateway failure"));
         }
-        return {
+        return Promise.resolve({
           content: [{ text: JSON.stringify({ match: true, notes: "Recovered" }), type: "text" }],
           finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
-        };
+        });
       },
     });
     const telegram = {
@@ -238,7 +247,7 @@ describe("failure paths", () => {
     expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
-      doGenerate: ({ abortSignal }) =>
+      doGenerate: ({ abortSignal }): Promise<never> =>
         new Promise<never>((_, reject) => {
           if (abortSignal === undefined) {
             reject(new Error("abort signal was not provided"));
@@ -310,7 +319,7 @@ describe("failure paths", () => {
     expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
-      doGenerate: () => Promise.reject(new Error("model unavailable")),
+      doGenerate: (): Promise<never> => Promise.reject(new Error("model unavailable")),
     });
     const telegram = {
       sendToMe: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),
