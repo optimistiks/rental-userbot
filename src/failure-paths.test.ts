@@ -44,6 +44,29 @@ function evaluatorFiles(): { promptPath: string; criteriaPath: string } {
   return { criteriaPath, promptPath };
 }
 
+/** Never resolves: rejects when the signal aborts, or at once if it is missing or already aborted. */
+function rejectWhenAborted(abortSignal: AbortSignal | undefined): Promise<never> {
+  return new Promise<never>((_, reject) => {
+    if (abortSignal === undefined) {
+      reject(new Error("abort signal was not provided"));
+      return;
+    }
+
+    if (abortSignal.aborted) {
+      reject(abortSignal.reason);
+      return;
+    }
+
+    abortSignal.addEventListener(
+      "abort",
+      () => {
+        reject(abortSignal.reason);
+      },
+      { once: true },
+    );
+  });
+}
+
 function retryPolicy(timeoutMs = 100): RetryPolicy {
   return { attempts: 3, backoffsMs: [0, 0], maxSteps: 8, timeoutMs };
 }
@@ -102,20 +125,16 @@ describe("failure paths", () => {
   it("recovers when the next attempt succeeds", async () => {
     expect.hasAssertions();
     const files = evaluatorFiles();
-    let attempts = 0;
     const model = new MockLanguageModelV4({
-      doGenerate: (): Promise<GenerateResult> => {
-        attempts += 1;
-        if (attempts === 1) {
-          return Promise.reject(new Error("temporary gateway failure"));
-        }
-        return Promise.resolve({
+      doGenerate: vi
+        .fn<() => Promise<GenerateResult>>()
+        .mockRejectedValueOnce(new Error("temporary gateway failure"))
+        .mockResolvedValue({
           content: [{ text: JSON.stringify({ match: true, notes: "Recovered" }), type: "text" }],
           finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
-        });
-      },
+        }),
     });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -139,20 +158,16 @@ describe("failure paths", () => {
   it("delivers a recovered Match through the pipeline", async () => {
     expect.hasAssertions();
     const files = evaluatorFiles();
-    let attempts = 0;
     const model = new MockLanguageModelV4({
-      doGenerate: (): Promise<GenerateResult> => {
-        attempts += 1;
-        if (attempts === 1) {
-          return Promise.reject(new Error("temporary gateway failure"));
-        }
-        return Promise.resolve({
+      doGenerate: vi
+        .fn<() => Promise<GenerateResult>>()
+        .mockRejectedValueOnce(new Error("temporary gateway failure"))
+        .mockResolvedValue({
           content: [{ text: JSON.stringify({ match: true, notes: "Recovered" }), type: "text" }],
           finishReason: { raw: undefined, unified: "stop" },
           usage,
           warnings: [],
-        });
-      },
+        }),
     });
     const telegram = {
       sendToMe: vi.fn<(text: string) => Promise<void>>(() => Promise.resolve()),
@@ -247,26 +262,7 @@ describe("failure paths", () => {
     expect.hasAssertions();
     const files = evaluatorFiles();
     const model = new MockLanguageModelV4({
-      doGenerate: ({ abortSignal }): Promise<never> =>
-        new Promise<never>((_, reject) => {
-          if (abortSignal === undefined) {
-            reject(new Error("abort signal was not provided"));
-            return;
-          }
-
-          if (abortSignal.aborted) {
-            reject(abortSignal.reason);
-            return;
-          }
-
-          abortSignal.addEventListener(
-            "abort",
-            () => {
-              reject(abortSignal.reason);
-            },
-            { once: true },
-          );
-        }),
+      doGenerate: ({ abortSignal }): Promise<never> => rejectWhenAborted(abortSignal),
     });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
       /* Keep test output quiet. */
@@ -362,14 +358,11 @@ describe("failure paths", () => {
         .mockResolvedValueOnce({ match: true, notes: "First" })
         .mockResolvedValueOnce({ match: true, notes: "Second" }),
     };
-    let sendCount = 0;
     const telegram = {
-      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {
-        sendCount += 1;
-        if (sendCount === 1) {
-          throw new Error("Saved Messages unavailable");
-        }
-      }),
+      sendToMe: vi
+        .fn<Telegram["sendToMe"]>()
+        .mockRejectedValueOnce(new Error("Saved Messages unavailable"))
+        .mockResolvedValue(undefined),
     };
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {
       /* Keep test output quiet. */

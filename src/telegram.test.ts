@@ -33,6 +33,14 @@ const settings = {
   apiId: 123_456,
 } satisfies Pick<Settings, "apiId" | "apiHash">;
 
+/** A photo thumbnail mock that only answers for one requested size. */
+function thumbnailForSize(
+  wanted: string,
+  thumbnail: { name: string },
+): (size: string) => { name: string } | null {
+  return (size) => (size === wanted ? thumbnail : null);
+}
+
 describe("telegram client setup", () => {
   it("uses the persistent session and the specified update settings", () => {
     expect.hasAssertions();
@@ -169,14 +177,14 @@ describe("telegram adapter", () => {
       type: "photo" as const,
     };
     const firstPhoto = {
-      getThumbnail: vi.fn<(size: string) => { name: string } | null>((size) =>
-        size === "y" ? firstThumbnail : null,
+      getThumbnail: vi.fn<(size: string) => { name: string } | null>(
+        thumbnailForSize("y", firstThumbnail),
       ),
       type: "photo" as const,
     };
     const secondPhoto = {
-      getThumbnail: vi.fn<(size: string) => { name: string } | null>((size) =>
-        size === "x" ? secondThumbnail : null,
+      getThumbnail: vi.fn<(size: string) => { name: string } | null>(
+        thumbnailForSize("x", secondThumbnail),
       ),
       type: "photo" as const,
     };

@@ -414,20 +414,26 @@ describe("post pipeline", () => {
     let activeEvaluations = 0;
     let maximumActiveEvaluations = 0;
     const evaluationOrder: number[] = [];
+    const enter = (listing: Listing): void => {
+      activeEvaluations += 1;
+      maximumActiveEvaluations = Math.max(maximumActiveEvaluations, activeEvaluations);
+      evaluationOrder.push(Number(listing.link?.split("/").at(-1)));
+    };
     const evaluator = {
-      evaluate: vi.fn<Evaluator["evaluate"]>(async (listing: Listing) => {
-        activeEvaluations += 1;
-        maximumActiveEvaluations = Math.max(maximumActiveEvaluations, activeEvaluations);
-        const messageId = Number(listing.link?.split("/").at(-1));
-        evaluationOrder.push(messageId);
-
-        if (messageId === 6) {
+      evaluate: vi
+        .fn<Evaluator["evaluate"]>()
+        // The first post blocks until the test releases it; the rest run straight through.
+        .mockImplementationOnce(async (listing) => {
+          enter(listing);
           await firstEvaluation;
-        }
-
-        activeEvaluations -= 1;
-        return { match: false, notes: "No match" };
-      }),
+          activeEvaluations -= 1;
+          return { match: false, notes: "No match" };
+        })
+        .mockImplementation((listing) => {
+          enter(listing);
+          activeEvaluations -= 1;
+          return Promise.resolve({ match: false, notes: "No match" });
+        }),
     };
     const pipeline = createPostPipeline({
       channelIds: [-1_001_234_567_890],
