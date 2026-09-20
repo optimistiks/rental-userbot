@@ -1,6 +1,6 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createZoneChecker, readZoneFile } from "./zone.js";
@@ -21,10 +21,10 @@ const polygon = (
 });
 
 function writeZone(value: unknown): string {
-  const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-  const path = join(directory, "zone.geojson");
-  writeFileSync(path, JSON.stringify(value));
-  return path;
+  const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+  const zonePath = path.join(directory, "zone.geojson");
+  writeFileSync(zonePath, JSON.stringify(value));
+  return zonePath;
 }
 
 describe("readZoneFile", () => {
@@ -60,10 +60,13 @@ describe("readZoneFile", () => {
 
   it("names a missing, malformed, or empty Zone file", () => {
     expect.hasAssertions();
-    const missingPath = join(tmpdir(), "missing-rental-zone.geojson");
+    const missingPath = path.join(tmpdir(), "missing-rental-zone.geojson");
     expect(() => readZoneFile(missingPath)).toThrow(new RegExp(`Zone file .*${missingPath}`, "u"));
 
-    const malformedPath = join(mkdtempSync(join(tmpdir(), "rental-userbot-")), "zone.geojson");
+    const malformedPath = path.join(
+      mkdtempSync(path.join(tmpdir(), "rental-userbot-")),
+      "zone.geojson",
+    );
     writeFileSync(malformedPath, "{");
     expect(() => readZoneFile(malformedPath)).toThrow(/Zone file .*valid GeoJSON/u);
 
@@ -113,7 +116,7 @@ describe("readZoneFile", () => {
 describe("createZoneChecker", () => {
   it("answers known points from the starting Zone", () => {
     expect.hasAssertions();
-    const checker = createZoneChecker(join(process.cwd(), "data.example/zone.geojson"));
+    const checker = createZoneChecker(path.join(process.cwd(), "data.example/zone.geojson"));
 
     expect(checker.inZone({ lat: 41.6437281, lon: 41.6322006 })).toStrictEqual({
       inside: true,

@@ -1,7 +1,7 @@
 import { MockLanguageModelV4 } from "ai/test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { EvaluatorOptions, EvaluatorToolImplementations } from "./evaluator.js";
@@ -29,9 +29,9 @@ function modelFor(...verdicts: { match: boolean; notes: string }[]) {
 describe("evaluator", () => {
   it("runs agent telemetry under the Post link and reports evaluation failures", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const model = new MockLanguageModelV4({
@@ -78,9 +78,9 @@ describe("evaluator", () => {
 
   it("lets the agent geocode and check the Zone before returning its Verdict", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(() =>
@@ -171,9 +171,9 @@ describe("evaluator", () => {
 
   it("returns tool errors to the agent so it can recover in the same run", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const model = new MockLanguageModelV4({
@@ -223,9 +223,9 @@ describe("evaluator", () => {
 
   it("logs a schema-invalid tool call before the agent recovers", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const model = new MockLanguageModelV4({
@@ -282,9 +282,9 @@ describe("evaluator", () => {
 
   it("re-reads the prompt and Criteria and returns the structured Verdict", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt version one");
     writeFileSync(criteriaPath, "Criteria version one");
     const model = modelFor(
@@ -327,9 +327,9 @@ describe("evaluator", () => {
 
   it("downloads photos once and sends them after the Post text", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const firstPhoto = { __photoRef: true } as PhotoRef;
@@ -355,7 +355,7 @@ describe("evaluator", () => {
     expect(downloadPhoto).toHaveBeenNthCalledWith(1, firstPhoto);
     expect(downloadPhoto).toHaveBeenNthCalledWith(2, secondPhoto);
 
-    const { prompt } = model.doGenerateCalls[0];
+    const [{ prompt }] = model.doGenerateCalls;
     expect(prompt).toHaveLength(2);
     expect(prompt?.[0]).toStrictEqual(expect.objectContaining({ role: "system" }));
     expect(prompt?.[1]).toStrictEqual(expect.objectContaining({ role: "user" }));
@@ -383,9 +383,9 @@ describe("evaluator", () => {
 
   it("returns No match without a model call when all photos fail and text is empty", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const firstPhoto = { __photoRef: true } as PhotoRef;

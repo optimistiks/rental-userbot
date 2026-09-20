@@ -136,7 +136,7 @@ function createTelegramAdapter(client: TelegramClientLike): Telegram {
       return;
     }
 
-    const firstMessage = postMessages[0];
+    const [firstMessage] = postMessages;
     const albumId = firstMessage.groupedIdUnique;
     const post: Post = {
       chatId: firstMessage.chat.id,

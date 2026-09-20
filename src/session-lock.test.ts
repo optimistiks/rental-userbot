@@ -1,12 +1,12 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { acquireSessionLock } from "./session-lock.js";
 
 function lockPath(): string {
-  return join(mkdtempSync(join(tmpdir(), "rental-userbot-")), "session.lock");
+  return path.join(mkdtempSync(path.join(tmpdir(), "rental-userbot-")), "session.lock");
 }
 
 describe("acquireSessionLock", () => {

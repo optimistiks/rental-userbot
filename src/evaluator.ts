@@ -350,7 +350,7 @@ function describeToolResult(toolName: string, output: unknown): string {
     }
 
     const results = Array.isArray(output.results) ? output.results : [];
-    const best = results[0];
+    const [best] = results;
     if (!isRecord(best)) {
       return "nothing found";
     }

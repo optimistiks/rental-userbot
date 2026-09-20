@@ -1,6 +1,6 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
@@ -48,8 +48,8 @@ describe("runLogin", () => {
 describe("runDaemon", () => {
   it("connects before checking membership and announcing startup", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(criteriaPath, "Criteria");
     const settings = {
       aiGatewayApiKey: "gateway-key",
@@ -61,7 +61,7 @@ describe("runDaemon", () => {
       locationIqToken: "locationiq-token",
       modelId: "test/model",
       promptPath: criteriaPath,
-      zonePath: join(process.cwd(), "data.example/zone.geojson"),
+      zonePath: path.join(process.cwd(), "data.example/zone.geojson"),
     } satisfies Settings;
     const events: string[] = [];
     const client = {
@@ -81,7 +81,13 @@ describe("runDaemon", () => {
       start: vi.fn<SessionClient["start"]>(() => Promise.resolve(events.push("start"))),
     };
 
-    await runDaemon(settings, () => client, join(directory, "bot.sqlite"), undefined, noLock());
+    await runDaemon(
+      settings,
+      () => client,
+      path.join(directory, "bot.sqlite"),
+      undefined,
+      noLock(),
+    );
 
     expect(events).toStrictEqual(["start", "dialogs", "send", "stream"]);
     expect(client.sendText).toHaveBeenCalledWith("me", "🟢 started, watching 1/1 channels", {
@@ -91,8 +97,8 @@ describe("runDaemon", () => {
 
   it("closes the client when startup announcement fails", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(criteriaPath, "Criteria");
     const settings = {
       aiGatewayApiKey: "gateway-key",
@@ -104,7 +110,7 @@ describe("runDaemon", () => {
       locationIqToken: "locationiq-token",
       modelId: "test/model",
       promptPath: criteriaPath,
-      zonePath: join(process.cwd(), "data.example/zone.geojson"),
+      zonePath: path.join(process.cwd(), "data.example/zone.geojson"),
     } satisfies Settings;
     const client = {
       destroy: vi.fn<() => Promise<void>>(() => Promise.resolve()),
@@ -121,7 +127,7 @@ describe("runDaemon", () => {
     };
 
     await expect(
-      runDaemon(settings, () => client, join(directory, "bot.sqlite"), undefined, noLock()),
+      runDaemon(settings, () => client, path.join(directory, "bot.sqlite"), undefined, noLock()),
     ).rejects.toThrow("Saved Messages unavailable");
     expect(client.destroy).toHaveBeenCalledTimes(1);
   });

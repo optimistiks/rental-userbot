@@ -1,7 +1,7 @@
 import { MockLanguageModelV4 } from "ai/test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -120,9 +120,9 @@ describe("post pipeline", () => {
 
   it("sends the Verdict chosen after geocoding and checking the Zone", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const model = new MockLanguageModelV4({
@@ -199,9 +199,9 @@ describe("post pipeline", () => {
 
   it("evaluates watched text Posts, notifies Matches, and drops other Posts", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const model = new MockLanguageModelV4({
@@ -255,9 +255,9 @@ describe("post pipeline", () => {
 
   it("evaluates an album once, sends its photos to the model, and drops a late part", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const firstPhoto = { __photoRef: true } as PhotoRef;
@@ -320,9 +320,9 @@ describe("post pipeline", () => {
 
   it("marks a textless Post processed without an agent run when every photo fails", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const promptPath = join(directory, "prompt.md");
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const promptPath = path.join(directory, "prompt.md");
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const photo = { __photoRef: true } as PhotoRef;

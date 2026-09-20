@@ -1,7 +1,7 @@
 import { MockLanguageModelV4 } from "ai/test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { EvaluationFailure, Evaluator, RetryPolicy } from "./evaluator.js";
@@ -27,9 +27,9 @@ function post(id: number, text = "Flat for rent"): Post {
 }
 
 function evaluatorFiles(): { promptPath: string; criteriaPath: string } {
-  const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-  const promptPath = join(directory, "prompt.md");
-  const criteriaPath = join(directory, "criteria.md");
+  const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+  const promptPath = path.join(directory, "prompt.md");
+  const criteriaPath = path.join(directory, "criteria.md");
   writeFileSync(promptPath, "Prompt");
   writeFileSync(criteriaPath, "Criteria");
   return { criteriaPath, promptPath };
@@ -289,7 +289,7 @@ describe("failure paths", () => {
     });
     const evaluator = createEvaluator(
       {
-        criteriaPath: join(tmpdir(), "missing-criteria.md"),
+        criteriaPath: path.join(tmpdir(), "missing-criteria.md"),
         modelId: "test/model",
         promptPath: files.promptPath,
       },

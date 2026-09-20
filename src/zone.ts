@@ -170,7 +170,7 @@ function isLinearRing(value: unknown): boolean {
     return false;
   }
 
-  const first = value[0];
+  const [first] = value;
   const last = value.at(-1);
   return (
     value.every(isPosition) &&

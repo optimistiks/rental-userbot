@@ -1,6 +1,6 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
@@ -11,7 +11,7 @@ import { announceStartup, initializeStartup } from "./startup.js";
 const settings = (
   criteriaPath: string,
   promptPath = criteriaPath,
-  zonePath = join(process.cwd(), "data.example/zone.geojson"),
+  zonePath = path.join(process.cwd(), "data.example/zone.geojson"),
 ): Settings => ({
   aiGatewayApiKey: "gateway-key",
   apiHash: "hash",
@@ -28,8 +28,8 @@ const settings = (
 describe("initializeStartup", () => {
   it("checks the Criteria file and initializes a SQLite Dedupe Store", () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const criteriaPath = join(directory, "criteria.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const criteriaPath = path.join(directory, "criteria.md");
     writeFileSync(criteriaPath, "Criteria text");
 
     const resources = initializeStartup(settings(criteriaPath), ":memory:");
@@ -47,9 +47,9 @@ describe("initializeStartup", () => {
 
   it("names the Prompt file when it cannot be read", () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const criteriaPath = join(directory, "criteria.md");
-    const promptPath = join(directory, "prompt.md");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const criteriaPath = path.join(directory, "criteria.md");
+    const promptPath = path.join(directory, "prompt.md");
     writeFileSync(criteriaPath, "Criteria text");
 
     expect(() => initializeStartup(settings(criteriaPath, promptPath), ":memory:")).toThrow(
@@ -59,10 +59,10 @@ describe("initializeStartup", () => {
 
   it("names the Zone file when it cannot be read", () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(join(tmpdir(), "rental-userbot-"));
-    const criteriaPath = join(directory, "criteria.md");
-    const promptPath = join(directory, "prompt.md");
-    const zonePath = join(directory, "zone.geojson");
+    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
+    const criteriaPath = path.join(directory, "criteria.md");
+    const promptPath = path.join(directory, "prompt.md");
+    const zonePath = path.join(directory, "zone.geojson");
     writeFileSync(criteriaPath, "Criteria text");
     writeFileSync(promptPath, "Prompt text");
 

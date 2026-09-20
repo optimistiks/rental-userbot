@@ -229,7 +229,7 @@ describe("telegram adapter", () => {
     ]);
 
     expect(handler).toHaveBeenCalledTimes(1);
-    const [post] = handler.mock.calls[0];
+    const [[post]] = handler.mock.calls;
     expect(post).toMatchObject({
       albumId: "album-7",
       chatId: -1_001_234_567_890,
