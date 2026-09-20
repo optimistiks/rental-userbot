@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { EvaluationFailure } from "./evaluator.js";
+import type { Evaluator } from "./evaluator.js";
 import type { Post } from "./telegram.js";
+import type { Telegram } from "./telegram.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
 import { createEvaluator, formatEvaluationError } from "./evaluator.js";
@@ -323,13 +325,13 @@ describe("failure paths", () => {
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
       evaluate: vi
-        .fn()
+        .fn<Evaluator["evaluate"]>()
         .mockResolvedValueOnce({ match: true, notes: "First" })
         .mockResolvedValueOnce({ match: true, notes: "Second" }),
     };
     let sendCount = 0;
     const telegram = {
-      sendToMe: vi.fn(async () => {
+      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {
         sendCount += 1;
         if (sendCount === 1) {
           throw new Error("Saved Messages unavailable");
@@ -367,7 +369,10 @@ describe("failure paths", () => {
       sendToMe: vi.fn<(text: string) => Promise<void>>(async () => {}),
     };
     const evaluator = {
-      evaluate: vi.fn(async () => ({ match: true, notes: "x".repeat(5000) })),
+      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({
+        match: true,
+        notes: "x".repeat(5000),
+      })),
     };
     const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const pipeline = createPostPipeline({

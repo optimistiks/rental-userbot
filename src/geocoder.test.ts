@@ -2,6 +2,8 @@ import { HttpResponse, delay, http } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import type { Fetcher } from "./geocoder.js";
+
 import { createGeocoder, precisionForMatchLevel } from "./geocoder.js";
 
 const server = setupServer();
@@ -144,7 +146,7 @@ describe(createGeocoder, () => {
 
   it("passes an abort signal through to fetch for the tool timeout", async () => {
     let signal: AbortSignal | undefined;
-    const fetcher = vi.fn(async (_input: string | URL, init?: RequestInit) => {
+    const fetcher = vi.fn<Fetcher>(async (_input, init) => {
       signal = init?.signal ?? undefined;
       throw new Error("aborted https://geocoder.test/v1/search?key=secret-token");
     });

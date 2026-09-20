@@ -124,4 +124,4 @@ if (isEntrypoint) {
   void start();
 }
 
-export { runLogin, runDaemon, start };
+export { runLogin, runDaemon, start, type ClientFactory };

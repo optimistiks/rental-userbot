@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
+import type { Telegram } from "./telegram.js";
 
 import { announceStartup, initializeStartup } from "./startup.js";
 
@@ -70,8 +71,8 @@ describe(initializeStartup, () => {
 describe(announceStartup, () => {
   it("sends the startup message and reports missing channels", async () => {
     const telegram = {
-      joinedChannelIds: vi.fn(async () => [-1_001_234_567_890]),
-      sendToMe: vi.fn(async () => {}),
+      joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(async () => [-1_001_234_567_890]),
+      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined),
     };
     const warn = vi.spyOn(console, "warn").mockReturnValue(undefined);
     const log = vi.spyOn(console, "log").mockReturnValue(undefined);
@@ -92,8 +93,8 @@ describe(announceStartup, () => {
 
   it("omits the not-joined line when every channel is joined", async () => {
     const telegram = {
-      joinedChannelIds: vi.fn(async () => [-1_001_234_567_890]),
-      sendToMe: vi.fn(async () => {}),
+      joinedChannelIds: vi.fn<Telegram["joinedChannelIds"]>(async () => [-1_001_234_567_890]),
+      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined),
     };
 
     await announceStartup(telegram, [-1_001_234_567_890]);

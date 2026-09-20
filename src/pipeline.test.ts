@@ -4,9 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Listing } from "./evaluator.js";
+import type {
+  Evaluator,
+  EvaluatorOptions,
+  EvaluatorToolImplementations,
+  Listing,
+} from "./evaluator.js";
 import type { ErrorReporter } from "./sentry.js";
-import type { PhotoRef, Post } from "./telegram.js";
+import type { PhotoRef, Post, Telegram } from "./telegram.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
 import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
@@ -30,17 +35,17 @@ function post(chatId: number, text: string, id: number): Post {
 describe("post pipeline", () => {
   it("still notifies and marks the Post when the Evaluator throws", async () => {
     const errorReporter: ErrorReporter = {
-      captureException: vi.fn(),
+      captureException: vi.fn<ErrorReporter["captureException"]>(),
       enabled: true,
-      run: vi.fn(async (_link, operation) => operation()),
+      run: async (_link, operation) => operation(),
     };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
-      evaluate: vi.fn(async () => {
+      evaluate: vi.fn<Evaluator["evaluate"]>(async () => {
         throw new Error("evaluator exploded");
       }),
     };
-    const telegram = { sendToMe: vi.fn(async () => {}) };
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {}) };
     const error = vi.spyOn(console, "error").mockReturnValue(undefined);
     const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const pipeline = createPostPipeline({
@@ -69,16 +74,16 @@ describe("post pipeline", () => {
 
   it("reports a failed notification with the Post link without blocking the queue", async () => {
     const errorReporter: ErrorReporter = {
-      captureException: vi.fn(),
+      captureException: vi.fn<ErrorReporter["captureException"]>(),
       enabled: true,
-      run: vi.fn(async (_link, operation) => operation()),
+      run: async (_link, operation) => operation(),
     };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
-      evaluate: vi.fn(async () => ({ match: true, notes: "Looks good" })),
+      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: true, notes: "Looks good" })),
     };
     const telegram = {
-      sendToMe: vi.fn(async () => {
+      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {
         throw new Error("Saved Messages unavailable");
       }),
     };
@@ -145,7 +150,7 @@ describe("post pipeline", () => {
         },
       ],
     });
-    const geocode = vi.fn(async () => ({
+    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(async () => ({
       results: [
         {
           label: "Gorgasali 33, Batumi",
@@ -155,8 +160,11 @@ describe("post pipeline", () => {
         },
       ],
     }));
-    const inZone = vi.fn(() => ({ inside: true, zone: "Old Batumi" }));
-    const telegram = { sendToMe: vi.fn(async () => {}) };
+    const inZone = vi.fn<EvaluatorToolImplementations["inZone"]>(() => ({
+      inside: true,
+      zone: "Old Batumi",
+    }));
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {}) };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
@@ -200,7 +208,7 @@ describe("post pipeline", () => {
         },
       ],
     });
-    const telegram = { sendToMe: vi.fn(async () => {}) };
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {}) };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
@@ -251,7 +259,7 @@ describe("post pipeline", () => {
       .mockResolvedValueOnce(new Uint8Array([2]));
     const telegram = {
       downloadPhoto,
-      sendToMe: vi.fn(async () => undefined),
+      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined),
     };
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = createEvaluator(
@@ -306,7 +314,7 @@ describe("post pipeline", () => {
         warnings: [],
       },
     });
-    const downloadPhoto = vi.fn(async () => {
+    const downloadPhoto = vi.fn<NonNullable<EvaluatorOptions["downloadPhoto"]>>(async () => {
       throw new Error("expired file reference");
     });
     const dedupeStore = openDedupeStore(":memory:");
@@ -318,7 +326,7 @@ describe("post pipeline", () => {
       channelIds: [-1001234567890],
       dedupeStore,
       evaluator,
-      telegram: { sendToMe: vi.fn(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
     });
     const log = vi.spyOn(console, "log").mockReturnValue(undefined);
 
@@ -346,7 +354,7 @@ describe("post pipeline", () => {
       releaseFirst = resolve;
     });
     const evaluator = {
-      evaluate: vi.fn(async () => {
+      evaluate: vi.fn<Evaluator["evaluate"]>(async () => {
         await firstEvaluation;
         return { match: false, notes: "No match" };
       }),
@@ -355,7 +363,7 @@ describe("post pipeline", () => {
       channelIds: [-1001234567890],
       dedupeStore,
       evaluator,
-      telegram: { sendToMe: vi.fn(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
     });
     const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const first = pipeline.process(post(-1_001_234_567_890, "Flat for rent", 5));
@@ -383,7 +391,7 @@ describe("post pipeline", () => {
     let maximumActiveEvaluations = 0;
     const evaluationOrder: number[] = [];
     const evaluator = {
-      evaluate: vi.fn(async (listing: Listing) => {
+      evaluate: vi.fn<Evaluator["evaluate"]>(async (listing: Listing) => {
         activeEvaluations += 1;
         maximumActiveEvaluations = Math.max(maximumActiveEvaluations, activeEvaluations);
         const messageId = Number(listing.link?.split("/").at(-1));
@@ -401,7 +409,7 @@ describe("post pipeline", () => {
       channelIds: [-1001234567890],
       dedupeStore,
       evaluator,
-      telegram: { sendToMe: vi.fn(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
     });
     const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const first = pipeline.process(post(-1_001_234_567_890, "First flat", 6));
@@ -422,24 +430,28 @@ describe("post pipeline", () => {
 
   it("does not re-evaluate a Processed Post across pipeline instances sharing a store", async () => {
     const dedupeStore = openDedupeStore(":memory:");
-    const firstEvaluator = { evaluate: vi.fn(async () => ({ match: false, notes: "No match" })) };
+    const firstEvaluator = {
+      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: false, notes: "No match" })),
+    };
     const firstPipeline = createPostPipeline({
       channelIds: [-1001234567890],
       dedupeStore,
       evaluator: firstEvaluator,
-      telegram: { sendToMe: vi.fn(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
     });
     const log = vi.spyOn(console, "log").mockReturnValue(undefined);
     const firstPost = post(-1_001_234_567_890, "Already processed", 8);
 
     await firstPipeline.process(firstPost);
 
-    const secondEvaluator = { evaluate: vi.fn(async () => ({ match: false, notes: "No match" })) };
+    const secondEvaluator = {
+      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: false, notes: "No match" })),
+    };
     const secondPipeline = createPostPipeline({
       channelIds: [-1001234567890],
       dedupeStore,
       evaluator: secondEvaluator,
-      telegram: { sendToMe: vi.fn(async () => undefined) },
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(async () => undefined) },
     });
 
     await secondPipeline.process(firstPost);
@@ -453,10 +465,10 @@ describe("post pipeline", () => {
   it("marks a Post after a failed notification so it is not retried", async () => {
     const dedupeStore = openDedupeStore(":memory:");
     const evaluator = {
-      evaluate: vi.fn(async () => ({ match: true, notes: "Looks good" })),
+      evaluate: vi.fn<Evaluator["evaluate"]>(async () => ({ match: true, notes: "Looks good" })),
     };
     const telegram = {
-      sendToMe: vi.fn(async () => {
+      sendToMe: vi.fn<Telegram["sendToMe"]>(async () => {
         throw new Error("Saved Messages unavailable");
       }),
     };

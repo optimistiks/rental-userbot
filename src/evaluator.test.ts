@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
+import type { EvaluatorOptions, EvaluatorToolImplementations } from "./evaluator.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef } from "./telegram.js";
 
@@ -37,11 +38,16 @@ describe("evaluator", () => {
         throw new Error("gateway failed");
       },
     });
-    const errorReporter: ErrorReporter = {
-      captureException: vi.fn(),
+    // vitest's Mock<T> cannot carry a generic signature, so run is mocked at
+    // the instantiation the Evaluator actually uses and widened back once.
+    const run = vi.fn<(postLink: string, operation: () => Promise<unknown>) => Promise<unknown>>(
+      async (_link, operation) => operation(),
+    );
+    const errorReporter = {
+      captureException: vi.fn<ErrorReporter["captureException"]>(),
       enabled: true,
-      run: vi.fn(async (_link, operation) => operation()),
-    };
+      run,
+    } as unknown as ErrorReporter;
     const evaluator = createEvaluator(
       { criteriaPath, modelId: "test/model", promptPath },
       {
@@ -59,7 +65,7 @@ describe("evaluator", () => {
       }),
     ).resolves.toMatchObject({ kind: "evaluation-failure" });
 
-    expect(errorReporter.run).toHaveBeenCalledWith("https://t.me/example/53", expect.any(Function));
+    expect(run).toHaveBeenCalledWith("https://t.me/example/53", expect.any(Function));
     expect(errorReporter.captureException).toHaveBeenCalledWith(expect.any(Error), {
       phase: "evaluation",
       postLink: "https://t.me/example/53",
@@ -73,7 +79,7 @@ describe("evaluator", () => {
     const criteriaPath = join(directory, "criteria.md");
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
-    const geocode = vi.fn(async () => ({
+    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(async () => ({
       results: [
         {
           label: "Gorgasali 33, Batumi",
@@ -83,7 +89,10 @@ describe("evaluator", () => {
         },
       ],
     }));
-    const inZone = vi.fn(() => ({ inside: true, zone: "Old Batumi" }));
+    const inZone = vi.fn<EvaluatorToolImplementations["inZone"]>(() => ({
+      inside: true,
+      zone: "Old Batumi",
+    }));
     const model = new MockLanguageModelV4({
       doGenerate: [
         {
@@ -183,7 +192,7 @@ describe("evaluator", () => {
         },
       ],
     });
-    const geocode = vi.fn(async () => {
+    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(async () => {
       throw new Error("provider unavailable");
     });
     const evaluator = createEvaluator(
@@ -243,7 +252,7 @@ describe("evaluator", () => {
       {
         model,
         tools: createEvaluatorTools({
-          geocode: vi.fn(async () => ({ results: [] })),
+          geocode: vi.fn<EvaluatorToolImplementations["geocode"]>(async () => ({ results: [] })),
           inZone: () => ({ inside: false, zone: null }),
         }),
       },
@@ -361,7 +370,7 @@ describe("evaluator", () => {
     writeFileSync(promptPath, "Prompt");
     writeFileSync(criteriaPath, "Criteria");
     const firstPhoto = { __photoRef: true } as PhotoRef;
-    const downloadPhoto = vi.fn(async () => {
+    const downloadPhoto = vi.fn<NonNullable<EvaluatorOptions["downloadPhoto"]>>(async () => {
       throw new Error("expired file reference");
     });
     const model = modelFor({ match: true, notes: "Should not run" });

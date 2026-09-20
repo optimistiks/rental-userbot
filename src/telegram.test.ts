@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
-import type { Post, TelegramClientLike } from "./telegram.js";
+import type { Post, SessionClient, TelegramClientLike } from "./telegram.js";
 
 import {
   DEVICE_INFO,
@@ -55,7 +55,7 @@ describe("telegram client setup", () => {
   });
 
   it("refuses interactive prompts when starting the daemon", async () => {
-    const start = vi.fn(async (params?: typeof daemonStartParams) => {
+    const start = vi.fn<SessionClient["start"]>(async (params) => {
       await params?.phone?.();
     });
 
@@ -152,15 +152,19 @@ describe("telegram adapter", () => {
     const firstThumbnail = { name: "first-y" };
     const secondThumbnail = { name: "second-x" };
     const thirdPhoto = {
-      getThumbnail: vi.fn(() => null),
+      getThumbnail: vi.fn<(size: string) => { name: string } | null>(() => null),
       type: "photo" as const,
     };
     const firstPhoto = {
-      getThumbnail: vi.fn((size: string) => (size === "y" ? firstThumbnail : null)),
+      getThumbnail: vi.fn<(size: string) => { name: string } | null>((size) =>
+        size === "y" ? firstThumbnail : null,
+      ),
       type: "photo" as const,
     };
     const secondPhoto = {
-      getThumbnail: vi.fn((size: string) => (size === "x" ? secondThumbnail : null)),
+      getThumbnail: vi.fn<(size: string) => { name: string } | null>((size) =>
+        size === "x" ? secondThumbnail : null,
+      ),
       type: "photo" as const,
     };
     const client = {
@@ -241,7 +245,7 @@ describe("telegram adapter", () => {
     const handler = vi.fn<(post: Post) => void>();
     telegram.onPost(handler);
     const photos = Array.from({ length: 7 }, (_, index) => ({
-      getThumbnail: vi.fn(() => ({ index })),
+      getThumbnail: vi.fn<(size: string) => { index: number }>(() => ({ index })),
       type: "photo" as const,
     }));
     const onMessageGroupHandler = onMessageGroup.add.mock.calls[0][0] as unknown as (
@@ -268,7 +272,7 @@ describe("telegram adapter", () => {
     const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
     const onMessageGroup = { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() };
     const photo = {
-      getThumbnail: vi.fn(() => null),
+      getThumbnail: vi.fn<(size: string) => { name: string } | null>(() => null),
       type: "photo" as const,
     };
     const client = {
@@ -298,7 +302,7 @@ describe("telegram adapter", () => {
       id: 45,
       isService: false,
       link: "https://t.me/example/45",
-      media: { getThumbnail: vi.fn(), type: "video" },
+      media: { getThumbnail: vi.fn<() => null>(), type: "video" },
       text: "Video flat",
     });
     onNewMessageHandler({
@@ -306,7 +310,7 @@ describe("telegram adapter", () => {
       id: 46,
       isService: false,
       link: "https://t.me/example/46",
-      media: { getThumbnail: vi.fn(), type: "document" },
+      media: { getThumbnail: vi.fn<() => null>(), type: "document" },
       text: "Document flat",
     });
 

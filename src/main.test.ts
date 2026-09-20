@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Settings } from "./config.js";
+import type { ClientFactory } from "./main.js";
+import type { SessionClient, TelegramClientLike } from "./telegram.js";
 
 import { runDaemon, runLogin } from "./main.js";
 
@@ -15,15 +17,15 @@ function noLock() {
 
 describe(runLogin, () => {
   it("starts an interactive client without reading daemon settings", async () => {
-    const start = vi.fn(async () => {});
-    const destroy = vi.fn(async () => {});
-    const makeClient = vi.fn(() => ({
+    const start = vi.fn<SessionClient["start"]>(async () => undefined);
+    const destroy = vi.fn<() => Promise<void>>(async () => undefined);
+    const makeClient = vi.fn<ClientFactory>(() => ({
       destroy,
-      downloadAsBuffer: vi.fn(),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {},
-      onMessageGroup: { add: vi.fn() },
-      onNewMessage: { add: vi.fn() },
-      sendText: vi.fn(),
+      onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
+      onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
+      sendText: vi.fn<TelegramClientLike["sendText"]>(),
       start,
     }));
 
@@ -54,16 +56,20 @@ describe(runDaemon, () => {
     } satisfies Settings;
     const events: string[] = [];
     const client = {
-      destroy: vi.fn(async () => undefined),
-      downloadAsBuffer: vi.fn(),
+      destroy: vi.fn<() => Promise<void>>(async () => undefined),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {
         events.push("dialogs");
         yield { peer: { type: "chat", chatType: "channel", id: -1001234567890 } };
       },
-      onMessageGroup: { add: vi.fn() },
-      onNewMessage: { add: vi.fn(() => events.push("stream")) },
-      sendText: vi.fn(async () => events.push("send")),
-      start: vi.fn(async () => events.push("start")),
+      onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
+      onNewMessage: {
+        add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>(() => {
+          events.push("stream");
+        }),
+      },
+      sendText: vi.fn<TelegramClientLike["sendText"]>(async () => events.push("send")),
+      start: vi.fn<SessionClient["start"]>(async () => events.push("start")),
     };
 
     await runDaemon(settings, () => client, join(directory, "bot.sqlite"), undefined, noLock());
@@ -91,17 +97,17 @@ describe(runDaemon, () => {
       zonePath: join(process.cwd(), "data.example/zone.geojson"),
     } satisfies Settings;
     const client = {
-      destroy: vi.fn(async () => undefined),
-      downloadAsBuffer: vi.fn(),
+      destroy: vi.fn<() => Promise<void>>(async () => undefined),
+      downloadAsBuffer: vi.fn<TelegramClientLike["downloadAsBuffer"]>(),
       iterDialogs: async function* () {
         yield { peer: { type: "chat", chatType: "channel", id: -1001234567890 } };
       },
-      onMessageGroup: { add: vi.fn() },
-      onNewMessage: { add: vi.fn() },
-      sendText: vi.fn(async () => {
+      onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
+      onNewMessage: { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() },
+      sendText: vi.fn<TelegramClientLike["sendText"]>(async () => {
         throw new Error("Saved Messages unavailable");
       }),
-      start: vi.fn(async () => undefined),
+      start: vi.fn<SessionClient["start"]>(async () => undefined),
     };
 
     await expect(
