@@ -132,8 +132,9 @@ describe('Evaluator', () => {
     expect(model.doGenerateCalls[1].prompt).toContainEqual(
       expect.objectContaining({ role: 'tool' }),
     )
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('tool=geocode'))
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('tool=inZone'))
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/geocode ".*" → /))
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/inZone \(41\.6481, 41\.6394\) → inside Old Batumi/))
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/done in .*s, \d+ steps?, /))
     log.mockRestore()
   })
 
@@ -224,7 +225,7 @@ describe('Evaluator', () => {
       match: false,
       notes: 'Invalid location query',
     })
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/tool=geocode input=.* error=/))
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/geocode .* → failed: /))
     log.mockRestore()
   })
 

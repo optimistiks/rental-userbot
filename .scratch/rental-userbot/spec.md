@@ -206,11 +206,20 @@ There is no heartbeat.
 
 ([Agentic Evaluator](issues/20-agentic-evaluator.md))
 
-**Console** (`docker compose logs`), which works whether or not Sentry does:
-- Startup: one line with the channels found and missing.
-- Per Post: one line with its link, the Verdict and the notes or error.
-- Per run: the steps, tool calls with their results, token usage and latency.
-- Skipped photos, dropped empty Posts and failed sends are logged with the Post link.
+**Console** (`docker compose logs`), which works whether or not Sentry does. Every line starts with `post <link>`, so one grep follows a single flat from start to Verdict:
+
+```
+post https://t.me/x/12: considering — channel -1001234567890, 4 photos, "1+1 на Абусеридзе, 5 этаж, 650$…"
+post https://t.me/x/12: thinking — The photos show a renovated 1+1; the text gives DS Mall as the building.
+post https://t.me/x/12: geocode "DS Mall" → place "DS Mall, 5a, Tbel Abuseridze Street, Bagrationi II" (41.6400, 41.6220) in 214ms
+post https://t.me/x/12: inZone (41.6400, 41.6220) → outside
+post https://t.me/x/12: done in 6.4s, 2 steps, 4611 tokens in / 567 out (372 thinking)
+post https://t.me/x/12: No match — Located at DS Mall, outside Old Town and Rustaveli.
+```
+
+- The Post text is cut to 80 characters, and each step's thinking to the first line, 200 characters. The full reasoning goes to Sentry.
+- A run is only logged as `done` once it produced output; a failed attempt logs the error instead.
+- Startup logs one line with the channels found and missing. Skipped photos, dropped empty Posts, tool failures and failed sends are logged with the Post link.
 - Never logged: the LocationIQ URL, API keys, the session.
 
 **Sentry** (`@sentry/node` with AI monitoring for the AI SDK):

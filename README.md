@@ -70,6 +70,17 @@ Watch what it's doing:
 docker compose logs -f userbot
 ```
 
+Each post reads as a short story, and every line starts with its link, so `docker compose logs userbot | grep <link>` gives you one flat from start to finish:
+
+```
+post https://t.me/x/12: considering — channel -1001234567890, 4 photos, "1+1 на Абусеридзе, 5 этаж, 650$…"
+post https://t.me/x/12: thinking — The photos show a renovated 1+1; the text gives DS Mall as the building.
+post https://t.me/x/12: geocode "DS Mall" → place "DS Mall, 5a, Tbel Abuseridze Street, Bagrationi II" (41.6400, 41.6220) in 214ms
+post https://t.me/x/12: inZone (41.6400, 41.6220) → outside
+post https://t.me/x/12: done in 6.4s, 2 steps, 4611 tokens in / 567 out (372 thinking)
+post https://t.me/x/12: No match — Located at DS Mall, outside Old Town and Rustaveli.
+```
+
 **Always stop the daemon before logging in again,** so that two processes never share the Telegram session. The bot also enforces this with a lock file, and the second one to start refuses to run:
 
 ```sh

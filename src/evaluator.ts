@@ -48,7 +48,7 @@ export interface EvaluatorToolImplementations {
 export const TOOL_TIMEOUT_MS = 10_000
 
 /** A Post assembled for evaluation: its text, up to MAX_PHOTOS photos, and a link back to it. */
-export type Listing = Pick<Post, 'text'> & Partial<Pick<Post, 'link' | 'photos'>>
+export type Listing = Pick<Post, 'text'> & Partial<Pick<Post, 'chatId' | 'link' | 'photos'>>
 
 export interface Evaluator {
   evaluate(listing: Listing): Promise<Verdict>
@@ -107,7 +107,12 @@ export function createEvaluator(
         })),
       ]
 
+      console.log(
+        `post ${link}: considering — ${describeListing(post, photoData.length)}`,
+      )
+
       const attempts = Math.max(1, retryPolicy.attempts)
+      const startedAt = Date.now()
       for (let attempt = 0; attempt < attempts; attempt += 1) {
         let prompt: string
         let criteria: string
@@ -156,27 +161,24 @@ export function createEvaluator(
               providerOptions: {
                 google: { thinkingConfig: { includeThoughts: true } },
               },
-              onToolExecutionStart: ({ toolCall }) => {
-                console.log(
-                  `evaluation ${link} tool=${toolCall.toolName} input=${JSON.stringify(toolCall.input)}`,
-                )
-              },
               onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
-                if (toolOutput.type === 'tool-result') {
-                  console.log(
-                    `evaluation ${link} tool=${toolCall.toolName} result=${JSON.stringify(toolOutput.output)} latency=${toolExecutionMs}ms`,
-                  )
-                } else {
-                  console.log(
-                    `evaluation ${link} tool=${toolCall.toolName} error=${errorMessage(toolOutput.error)} latency=${toolExecutionMs}ms`,
-                  )
-                }
+                const outcome =
+                  toolOutput.type === 'tool-result'
+                    ? describeToolResult(toolCall.toolName, toolOutput.output)
+                    : `failed: ${errorMessage(toolOutput.error)}`
+                console.log(
+                  `post ${link}: ${describeToolCall(toolCall.toolName, toolCall.input)} → ${outcome} in ${Math.round(toolExecutionMs)}ms`,
+                )
               },
               onStepEnd: (step) => logStep(link, step),
             }),
           )
 
-          return result.output
+          // Read the output first: a run that ends without one is a failed attempt,
+          // and must not be logged as done.
+          const output = result.output
+          logRunSummary(link, result, Date.now() - startedAt)
+          return output
         } catch (error) {
           console.error(`post ${link}: evaluation attempt ${attempt + 1} failed`, error)
           if (attempt === attempts - 1) {
@@ -282,29 +284,104 @@ async function downloadPhotos(
   return photos
 }
 
-function logStep(
-  link: string,
-  step: EvaluationStep,
-): void {
-  console.log(
-    [
-      `evaluation ${link}`,
-      `step=${step.stepNumber + 1}`,
-      `finish=${step.finishReason}`,
-      `input=${step.usage.inputTokens ?? '?'}`,
-      `output=${step.usage.outputTokens ?? '?'}`,
-      `reasoning=${step.usage.outputTokenDetails.reasoningTokens ?? '?'}`,
-      `latency=${step.performance.stepTimeMs}ms`,
-    ].join(' '),
-  )
+const MAX_TEXT_PREVIEW = 80
+const MAX_THINKING_PREVIEW = 200
 
+/** One readable line per step: what the agent was thinking, if it said. */
+function logStep(link: string, step: EvaluationStep): void {
   for (const part of step.content) {
+    if (part.type === 'reasoning' && part.text.trim() !== '') {
+      console.log(`post ${link}: thinking — ${firstLine(part.text, MAX_THINKING_PREVIEW)}`)
+    }
+
     if (part.type === 'tool-error') {
       console.log(
-        `evaluation ${link} tool=${part.toolName} input=${JSON.stringify(part.input)} error=${errorMessage(part.error)}`,
+        `post ${link}: ${describeToolCall(part.toolName, part.input)} → failed: ${errorMessage(part.error)}`,
       )
     }
   }
+}
+
+/** Closes out a run: how long it took, how much it cost. */
+function logRunSummary(
+  link: string,
+  result: { steps: readonly EvaluationStep[]; usage: EvaluationStep['usage'] },
+  elapsedMs: number,
+): void {
+  const { inputTokens, outputTokens, outputTokenDetails } = result.usage
+  console.log(
+    [
+      `post ${link}: done in ${(elapsedMs / 1000).toFixed(1)}s,`,
+      `${result.steps.length} step${result.steps.length === 1 ? '' : 's'},`,
+      `${inputTokens ?? '?'} tokens in / ${outputTokens ?? '?'} out`,
+      `(${outputTokenDetails.reasoningTokens ?? 0} thinking)`,
+    ].join(' '),
+  )
+}
+
+function describeListing(listing: Listing, photoCount: number): string {
+  const parts = []
+  if (listing.chatId !== undefined) {
+    parts.push(`channel ${listing.chatId}`)
+  }
+  parts.push(`${photoCount} photo${photoCount === 1 ? '' : 's'}`)
+  const text = listing.text.trim()
+  if (text !== '') {
+    parts.push(`"${firstLine(text, MAX_TEXT_PREVIEW)}"`)
+  }
+  return parts.join(', ')
+}
+
+function describeToolCall(toolName: string, input: unknown): string {
+  if (toolName === 'geocode' && isRecord(input) && typeof input.query === 'string') {
+    return `geocode "${input.query}"`
+  }
+
+  if (toolName === 'inZone' && isRecord(input)) {
+    return `inZone (${formatCoordinate(input.lat)}, ${formatCoordinate(input.lon)})`
+  }
+
+  return `${toolName} ${JSON.stringify(input)}`
+}
+
+function describeToolResult(toolName: string, output: unknown): string {
+  if (!isRecord(output)) {
+    return JSON.stringify(output)
+  }
+
+  if (toolName === 'inZone') {
+    return output.inside === true ? `inside ${output.zone ?? 'the Zone'}` : 'outside'
+  }
+
+  if (toolName === 'geocode') {
+    if (typeof output.error === 'string') {
+      return `failed: ${output.error}`
+    }
+
+    const results = Array.isArray(output.results) ? output.results : []
+    const best = results[0]
+    if (!isRecord(best)) {
+      return 'nothing found'
+    }
+
+    const rest = results.length > 1 ? ` (+${results.length - 1} more)` : ''
+    return `${String(best.precision)} "${String(best.label)}" (${formatCoordinate(best.lat)}, ${formatCoordinate(best.lon)})${rest}`
+  }
+
+  return JSON.stringify(output)
+}
+
+function formatCoordinate(value: unknown): string {
+  return typeof value === 'number' ? value.toFixed(4) : String(value)
+}
+
+function firstLine(text: string, maxLength: number): string {
+  const line = text.trim().split(/\r\n|\n|\r/, 1)[0] ?? ''
+  return line.length > maxLength ? `${line.slice(0, maxLength)}…` : line
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 /** The step the SDK hands to onStepEnd, so this never drifts from the installed ai version. */
