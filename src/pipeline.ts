@@ -1,5 +1,5 @@
 import type { DedupeStore } from "./dedupe-store.js";
-import type { EvaluationFailure, Evaluator, Verdict } from "./evaluator.js";
+import type { EvaluationContext, EvaluationFailure, Evaluator, Verdict } from "./evaluator.js";
 import type { Notices } from "./notices.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { Post, Telegram } from "./telegram.js";
@@ -26,6 +26,8 @@ interface PostPipelineOptions {
 
 function createPostPipeline(options: PostPipelineOptions): PostPipeline {
   let queueTail = Promise.resolve();
+  // Listings queued but not yet started, logged when each one starts so a growing backlog shows.
+  let waiting = 0;
   const errorReporter = options.errorReporter ?? createSentryReporter();
 
   return {
@@ -55,10 +57,19 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
 
       /* The queue is a promise chain on purpose: process() must return at once
          while each post still runs strictly after the previous one. */
+      waiting += 1;
+      const queuedAt = Date.now();
       // oxlint-disable-next-line promise/prefer-await-to-then
       const queued = queueTail.then(async () => {
+        waiting -= 1;
         await noticeSend;
-        return processQueuedPost(post, processedPostKey, options, errorReporter);
+        return processQueuedPost(
+          post,
+          processedPostKey,
+          { waitedMs: Date.now() - queuedAt, waiting },
+          options,
+          errorReporter,
+        );
       });
       // oxlint-disable-next-line promise/prefer-await-to-then
       queueTail = queued.catch(() => {
@@ -72,6 +83,7 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
 async function processQueuedPost(
   post: Post,
   processedPostKey: string,
+  context: EvaluationContext,
   options: PostPipelineOptions,
   errorReporter: ErrorReporter,
 ): Promise<void> {
@@ -83,7 +95,7 @@ async function processQueuedPost(
   // Still reach the Notifier and be marked processed, so nothing is silently lost.
   let verdict: Verdict;
   try {
-    verdict = await options.evaluator.evaluate(post);
+    verdict = await options.evaluator.evaluate(post, context);
   } catch (error) {
     console.error(`post ${post.link}: evaluation threw`, error);
     errorReporter.captureException(error, { phase: "evaluation", postLink: post.link });

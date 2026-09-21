@@ -48,8 +48,15 @@ const TOOL_TIMEOUT_MS = 10_000;
 /** A Post with post text and at least three photos, assembled for evaluation. */
 type Listing = Pick<Post, "text"> & Partial<Pick<Post, "chatId" | "link" | "photos">>;
 
+interface EvaluationContext {
+  /** Listings still waiting in the pipeline queue behind this one. */
+  waiting: number;
+  /** How long this Listing waited in the queue before its turn. */
+  waitedMs: number;
+}
+
 interface Evaluator {
-  evaluate: (listing: Listing) => Promise<Verdict>;
+  evaluate: (listing: Listing, context?: EvaluationContext) => Promise<Verdict>;
 }
 
 interface RetryPolicy {
@@ -74,7 +81,7 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
   const errorReporter = options.errorReporter ?? createSentryReporter();
 
   return {
-    async evaluate(post) {
+    async evaluate(post, context) {
       const link = post.link ?? "<no link>";
       const photoData = await downloadPhotos(post.photos ?? [], link, downloadPhoto);
 
@@ -102,7 +109,9 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
         })),
       ];
 
-      console.log(`post ${link}: considering — ${describeListing(post, photoData.length)}`);
+      console.log(
+        `post ${link}: considering${describeBacklog(context)} — ${describeListing(post, photoData.length)}`,
+      );
 
       const attempts = Math.max(1, retryPolicy.attempts);
       const startedAt = Date.now();
@@ -321,6 +330,19 @@ function logRunSummary(
   );
 }
 
+function describeBacklog(context: EvaluationContext | undefined): string {
+  if (context === undefined) {
+    return "";
+  }
+  return ` [${context.waiting} waiting, waited ${formatWait(context.waitedMs)}]`;
+}
+
+function formatWait(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  return minutes === 0 ? `${seconds}s` : `${minutes}m${seconds % 60}s`;
+}
+
 function describeListing(listing: Listing, photoCount: number): string {
   const parts = [];
   if (listing.chatId !== undefined) {
@@ -400,6 +422,7 @@ type EvaluationStep = Parameters<NonNullable<Parameters<typeof generateText>[0][
 
 export {
   verdictSchema,
+  type EvaluationContext,
   type EvaluationFailure,
   type Verdict,
   type EvaluatorSettings,
