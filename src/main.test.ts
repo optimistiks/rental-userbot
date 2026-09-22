@@ -58,8 +58,10 @@ describe("runDaemon", () => {
       criteriaPath,
       geocoderUrl: "http://localhost:1234/search",
       locationIqToken: "locationiq-token",
+      mediaResolution: "low",
       modelId: "test/model",
       promptPath: criteriaPath,
+      thinkingLevel: "low",
       zonePath: path.join(process.cwd(), "data.example/zone.geojson"),
     } satisfies Settings;
     const events: string[] = [];
@@ -107,8 +109,10 @@ describe("runDaemon", () => {
       criteriaPath,
       geocoderUrl: "http://localhost:1234/search",
       locationIqToken: "locationiq-token",
+      mediaResolution: "low",
       modelId: "test/model",
       promptPath: criteriaPath,
+      thinkingLevel: "low",
       zonePath: path.join(process.cwd(), "data.example/zone.geojson"),
     } satisfies Settings;
     const client = {

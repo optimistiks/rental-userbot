@@ -21,8 +21,10 @@ const settings = (
   criteriaPath,
   geocoderUrl: "http://localhost:1234/search",
   locationIqToken: "locationiq-token",
+  mediaResolution: "low",
   modelId: "test/model",
   promptPath,
+  thinkingLevel: "low",
   zonePath,
 });
 

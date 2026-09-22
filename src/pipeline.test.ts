@@ -216,7 +216,7 @@ describe("post pipeline", () => {
     dedupeStore.close();
   });
 
-  it("sends the Verdict chosen after geocoding and checking the Zone", async () => {
+  it("sends the Verdict chosen after locating every candidate in the Zone", async () => {
     expect.hasAssertions();
     const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
     const promptPath = path.join(directory, "prompt.md");
@@ -229,21 +229,8 @@ describe("post pipeline", () => {
           content: [
             {
               input: JSON.stringify({ query: "Gorgasali 33" }),
-              toolCallId: "geocode-1",
-              toolName: "geocode",
-              type: "tool-call",
-            },
-          ],
-          finishReason: { raw: undefined, unified: "tool-calls" },
-          usage,
-          warnings: [],
-        },
-        {
-          content: [
-            {
-              input: JSON.stringify({ lat: 41.6481086, lon: 41.6393883 }),
-              toolCallId: "in-zone-1",
-              toolName: "inZone",
+              toolCallId: "locate-1",
+              toolName: "locateInZone",
               type: "tool-call",
             },
           ],
@@ -291,7 +278,7 @@ describe("post pipeline", () => {
     await pipeline.process(post(-1_001_234_567_890, "Flat at Gorgasali 33", 10));
 
     expect(telegram.sendToMe).toHaveBeenCalledWith("https://t.me/example/10\nAgent notes");
-    expect(model.doGenerateCalls).toHaveLength(3);
+    expect(model.doGenerateCalls).toHaveLength(2);
     dedupeStore.close();
   });
 

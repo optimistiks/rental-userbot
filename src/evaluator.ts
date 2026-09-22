@@ -3,11 +3,13 @@ import type { LanguageModel } from "ai";
 import { Output, generateText, isStepCount, tool } from "ai";
 import { z } from "zod";
 
+import type { MediaResolution, ThinkingLevel } from "./config.js";
 import type { GeocodeResponse } from "./geocoder.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef, Post } from "./telegram.js";
 import type { Point, ZoneResult } from "./zone.js";
 
+import { MEDIA_RESOLUTION, THINKING_LEVEL } from "./config.js";
 import { errorMessage, errorName } from "./errors.js";
 import { createSentryReporter } from "./sentry.js";
 import { readCriteriaFile, readPromptFile } from "./text-file.js";
@@ -28,6 +30,8 @@ interface EvaluatorSettings {
   modelId: string;
   promptPath: string;
   criteriaPath: string;
+  mediaResolution?: MediaResolution;
+  thinkingLevel?: ThinkingLevel;
 }
 
 interface EvaluatorOptions {
@@ -79,6 +83,8 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
   const retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY;
   const { tools } = options;
   const errorReporter = options.errorReporter ?? createSentryReporter();
+  const mediaResolution = settings.mediaResolution ?? MEDIA_RESOLUTION;
+  const thinkingLevel = settings.thinkingLevel ?? THINKING_LEVEL;
 
   return {
     async evaluate(post, context) {
@@ -155,6 +161,7 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
               ],
               onStepEnd: (step) => {
                 logStep(link, step);
+                logStepUsage(link, step);
               },
               onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
                 const outcome =
@@ -169,7 +176,10 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
               prepareStep: ({ stepNumber }) =>
                 stepNumber === retryPolicy.maxSteps - 1 ? { toolChoice: "none" } : {},
               providerOptions: {
-                google: { thinkingConfig: { includeThoughts: true } },
+                google: {
+                  mediaResolution: googleMediaResolution(mediaResolution),
+                  thinkingConfig: { includeThoughts: true, thinkingLevel },
+                },
               },
               stopWhen: isStepCount(retryPolicy.maxSteps),
               timeout:
@@ -206,17 +216,26 @@ that type here would be circular. */
 // oxlint-disable-next-line typescript/explicit-function-return-type, typescript/explicit-module-boundary-types
 function createEvaluatorTools(implementations: EvaluatorToolImplementations) {
   return {
-    geocode: tool({
+    locateInZone: tool({
       description:
-        "Search for an apartment or landmark in Batumi. Use a cleaned address or place name. Returns up to three candidates with coordinates and precision; use the coordinates with inZone.",
-      execute: ({ query }, { abortSignal }) => implementations.geocode(query, abortSignal),
+        "Search for an apartment or landmark in Batumi and check every candidate against the configured rental Zone. Use a cleaned address or place name. Returns up to three candidates with coordinates, precision, and Zone status so you can resolve ambiguous locations.",
+      execute: async ({ query }, { abortSignal }) => {
+        const response = await implementations.geocode(query, abortSignal);
+        return {
+          results: response.results.map((result) => {
+            const zone = implementations.inZone({ lat: result.lat, lon: result.lon });
+            return {
+              inside: zone.inside,
+              label: result.label,
+              lat: result.lat,
+              lon: result.lon,
+              precision: result.precision,
+              zone: zone.zone,
+            };
+          }),
+        };
+      },
       inputSchema: z.object({ query: z.string().min(1) }),
-    }),
-    inZone: tool({
-      description:
-        "Check whether a latitude and longitude is inside the configured rental Zone. The result names the matching outline when the point is inside.",
-      execute: ({ lat, lon }) => implementations.inZone({ lat, lon }),
-      inputSchema: z.object({ lat: z.number(), lon: z.number() }),
     }),
   };
 }
@@ -297,6 +316,17 @@ async function downloadPhotos(
 
 const MAX_TEXT_PREVIEW = 80;
 const MAX_THINKING_PREVIEW = 300;
+const GOOGLE_MEDIA_RESOLUTIONS = {
+  high: "MEDIA_RESOLUTION_HIGH",
+  low: "MEDIA_RESOLUTION_LOW",
+  medium: "MEDIA_RESOLUTION_MEDIUM",
+} as const satisfies Record<MediaResolution, string>;
+
+function googleMediaResolution(
+  resolution: MediaResolution,
+): "MEDIA_RESOLUTION_LOW" | "MEDIA_RESOLUTION_MEDIUM" | "MEDIA_RESOLUTION_HIGH" {
+  return GOOGLE_MEDIA_RESOLUTIONS[resolution];
+}
 
 /** One readable line per step: what the agent was thinking, if it said. */
 function logStep(link: string, step: EvaluationStep): void {
@@ -313,21 +343,40 @@ function logStep(link: string, step: EvaluationStep): void {
   }
 }
 
+function logStepUsage(link: string, step: EvaluationStep): void {
+  console.log(`post ${link}: step ${step.stepNumber + 1} usage — ${describeUsage(step.usage)}`);
+}
+
 /** Closes out a run: how long it took, how much it cost. */
 function logRunSummary(
   link: string,
   result: { steps: readonly EvaluationStep[]; usage: EvaluationStep["usage"] },
   elapsedMs: number,
 ): void {
-  const { inputTokens, outputTokens, outputTokenDetails } = result.usage;
   console.log(
     [
       `post ${link}: done in ${(elapsedMs / 1000).toFixed(1)}s,`,
       `${result.steps.length} step${result.steps.length === 1 ? "" : "s"},`,
-      `${inputTokens ?? "?"} tokens in / ${outputTokens ?? "?"} out`,
-      `(${outputTokenDetails.reasoningTokens ?? 0} thinking)`,
+      describeUsage(result.usage),
     ].join(" "),
   );
+}
+
+function describeUsage(usage: EvaluationStep["usage"]): string {
+  const { inputTokenDetails, outputTokenDetails } = usage;
+  return [
+    `${tokenCount(usage.inputTokens)} in`,
+    `(${tokenCount(inputTokenDetails.noCacheTokens)} new,`,
+    `${tokenCount(inputTokenDetails.cacheReadTokens)} cache read,`,
+    `${tokenCount(inputTokenDetails.cacheWriteTokens)} cache write)`,
+    `/ ${tokenCount(usage.outputTokens)} out`,
+    `(${tokenCount(outputTokenDetails.textTokens)} text,`,
+    `${tokenCount(outputTokenDetails.reasoningTokens)} reasoning)`,
+  ].join(" ");
+}
+
+function tokenCount(value: number | undefined): number | "?" {
+  return value ?? "?";
 }
 
 function describeBacklog(context: EvaluationContext | undefined): string {
@@ -357,12 +406,8 @@ function describeListing(listing: Listing, photoCount: number): string {
 }
 
 function describeToolCall(toolName: string, input: unknown): string {
-  if (toolName === "geocode" && isRecord(input) && typeof input.query === "string") {
-    return `geocode "${input.query}"`;
-  }
-
-  if (toolName === "inZone" && isRecord(input)) {
-    return `inZone (${formatCoordinate(input.lat)}, ${formatCoordinate(input.lon)})`;
+  if (toolName === "locateInZone" && isRecord(input) && typeof input.query === "string") {
+    return `locateInZone "${input.query}"`;
   }
 
   return `${toolName} ${JSON.stringify(input)}`;
@@ -373,30 +418,29 @@ function describeToolResult(toolName: string, output: unknown): string {
     return JSON.stringify(output);
   }
 
-  if (toolName === "inZone") {
-    if (output.inside !== true) {
-      return "outside";
-    }
-
-    return `inside ${typeof output.zone === "string" ? output.zone : "the Zone"}`;
-  }
-
-  if (toolName === "geocode") {
-    if (typeof output.error === "string") {
-      return `failed: ${output.error}`;
-    }
-
+  if (toolName === "locateInZone") {
     const results: unknown[] = Array.isArray(output.results) ? output.results : [];
-    const [best] = results;
-    if (!isRecord(best)) {
+    if (results.length === 0) {
       return "nothing found";
     }
 
-    const rest = results.length > 1 ? ` (+${results.length - 1} more)` : "";
-    return `${String(best.precision)} "${String(best.label)}" (${formatCoordinate(best.lat)}, ${formatCoordinate(best.lon)})${rest}`;
+    return results.map((result) => describeLocatedCandidate(result)).join("; ");
   }
 
   return JSON.stringify(output);
+}
+
+function describeLocatedCandidate(value: unknown): string {
+  if (!isRecord(value)) {
+    return JSON.stringify(value);
+  }
+
+  const location = `${String(value.precision)} "${String(value.label)}" (${formatCoordinate(value.lat)}, ${formatCoordinate(value.lon)})`;
+  const zone =
+    value.inside === true
+      ? `inside ${typeof value.zone === "string" ? value.zone : "the Zone"}`
+      : "outside";
+  return `${location} ${zone}`;
 }
 
 function formatCoordinate(value: unknown): string {
@@ -435,6 +479,8 @@ export {
   DEFAULT_RETRY_POLICY,
   createEvaluator,
   createEvaluatorTools,
+  googleMediaResolution,
+  describeUsage,
   formatEvaluationError,
   evaluationFailure,
 };

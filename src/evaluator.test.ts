@@ -8,7 +8,7 @@ import type { EvaluatorOptions, EvaluatorToolImplementations } from "./evaluator
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef } from "./telegram.js";
 
-import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
+import { createEvaluator, createEvaluatorTools, describeUsage } from "./evaluator.js";
 
 const usage = {
   inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
@@ -73,7 +73,7 @@ describe("evaluator", () => {
     error.mockRestore();
   });
 
-  it("lets the agent geocode and check the Zone before returning its Verdict", async () => {
+  it("lets the agent locate every geocoder candidate in the Zone before returning its Verdict", async () => {
     expect.hasAssertions();
     const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
     const promptPath = path.join(directory, "prompt.md");
@@ -89,34 +89,27 @@ describe("evaluator", () => {
             lon: 41.6393883,
             precision: "building" as const,
           },
+          {
+            label: "Gorgasali Street, Batumi",
+            lat: 41.641,
+            lon: 41.62,
+            precision: "street" as const,
+          },
         ],
       }),
     );
-    const inZone = vi.fn<EvaluatorToolImplementations["inZone"]>(() => ({
-      inside: true,
-      zone: "Old Batumi",
-    }));
+    const inZone = vi
+      .fn<EvaluatorToolImplementations["inZone"]>()
+      .mockReturnValueOnce({ inside: true, zone: "Old Batumi" })
+      .mockReturnValueOnce({ inside: false, zone: null });
     const model = new MockLanguageModelV4({
       doGenerate: [
         {
           content: [
             {
               input: JSON.stringify({ query: "Gorgasali 33" }),
-              toolCallId: "geocode-1",
-              toolName: "geocode",
-              type: "tool-call",
-            },
-          ],
-          finishReason: { raw: undefined, unified: "tool-calls" },
-          usage,
-          warnings: [],
-        },
-        {
-          content: [
-            {
-              input: JSON.stringify({ lat: 41.6481086, lon: 41.6393883 }),
-              toolCallId: "in-zone-1",
-              toolName: "inZone",
+              toolCallId: "locate-1",
+              toolName: "locateInZone",
               type: "tool-call",
             },
           ],
@@ -153,15 +146,21 @@ describe("evaluator", () => {
     ).resolves.toStrictEqual({ match: true, notes: "In Old Batumi" });
 
     expect(geocode).toHaveBeenCalledWith("Gorgasali 33", expect.anything());
-    expect(inZone).toHaveBeenCalledWith({ lat: 41.6481086, lon: 41.6393883 });
-    expect(model.doGenerateCalls).toHaveLength(3);
+    expect(inZone).toHaveBeenNthCalledWith(1, { lat: 41.6481086, lon: 41.6393883 });
+    expect(inZone).toHaveBeenNthCalledWith(2, { lat: 41.641, lon: 41.62 });
+    expect(model.doGenerateCalls).toHaveLength(2);
     expect(model.doGenerateCalls[1].prompt).toContainEqual(
       expect.objectContaining({ role: "tool" }),
     );
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/geocode ".*" → /u));
-    expect(log).toHaveBeenCalledWith(
-      expect.stringMatching(/inZone \(41\.6481, 41\.6394\) → inside Old Batumi/u),
+    expect(JSON.stringify(model.doGenerateCalls[1].prompt)).toContain(
+      '"label":"Gorgasali Street, Batumi","lat":41.641,"lon":41.62,"precision":"street","zone":null',
     );
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /locateInZone ".*" → building ".*" \(41\.6481, 41\.6394\) inside Old Batumi; street ".*" \(41\.6410, 41\.6200\) outside/u,
+      ),
+    );
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/step 1 usage — 10 in/u));
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/done in .*s, \d+ steps?, /u));
     log.mockRestore();
   });
@@ -179,8 +178,8 @@ describe("evaluator", () => {
           content: [
             {
               input: JSON.stringify({ query: "Unknown address" }),
-              toolCallId: "geocode-error-1",
-              toolName: "geocode",
+              toolCallId: "locate-error-1",
+              toolName: "locateInZone",
               type: "tool-call",
             },
           ],
@@ -231,8 +230,8 @@ describe("evaluator", () => {
           content: [
             {
               input: JSON.stringify({ query: 42 }),
-              toolCallId: "invalid-geocode-1",
-              toolName: "geocode",
+              toolCallId: "invalid-locate-1",
+              toolName: "locateInZone",
               type: "tool-call",
             },
           ],
@@ -273,7 +272,7 @@ describe("evaluator", () => {
       match: false,
       notes: "Invalid location query",
     });
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/geocode .* → failed: /u));
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/locateInZone .* → failed: /u));
     log.mockRestore();
   });
 
@@ -414,7 +413,13 @@ describe("evaluator", () => {
       .mockResolvedValueOnce(new Uint8Array([3, 4]));
     const model = modelFor({ match: true, notes: "Looks good" });
     const evaluator = createEvaluator(
-      { criteriaPath, modelId: "test/model", promptPath },
+      {
+        criteriaPath,
+        mediaResolution: "medium",
+        modelId: "test/model",
+        promptPath,
+        thinkingLevel: "high",
+      },
       { downloadPhoto, model },
     );
 
@@ -430,6 +435,12 @@ describe("evaluator", () => {
     expect(downloadPhoto).toHaveBeenNthCalledWith(2, secondPhoto);
 
     const [{ prompt }] = model.doGenerateCalls;
+    expect(model.doGenerateCalls[0].providerOptions).toStrictEqual({
+      google: {
+        mediaResolution: "MEDIA_RESOLUTION_MEDIUM",
+        thinkingConfig: { includeThoughts: true, thinkingLevel: "high" },
+      },
+    });
     expect(prompt).toHaveLength(2);
     expect(prompt?.[0]).toStrictEqual(expect.objectContaining({ role: "system" }));
     expect(prompt?.[1]).toStrictEqual(expect.objectContaining({ role: "user" }));
@@ -454,6 +465,23 @@ describe("evaluator", () => {
         type: "file",
       }),
     );
+  });
+
+  it("formats the full cache and reasoning token breakdown", () => {
+    expect.hasAssertions();
+    expect(
+      describeUsage({
+        inputTokenDetails: {
+          cacheReadTokens: 6,
+          cacheWriteTokens: 1,
+          noCacheTokens: 3,
+        },
+        inputTokens: 10,
+        outputTokenDetails: { reasoningTokens: 4, textTokens: 2 },
+        outputTokens: 6,
+        totalTokens: 16,
+      }),
+    ).toBe("10 in (3 new, 6 cache read, 1 cache write) / 6 out (2 text, 4 reasoning)");
   });
 
   it("returns No match without a model call when all photos fail and text is empty", async () => {

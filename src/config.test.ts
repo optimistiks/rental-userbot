@@ -4,8 +4,10 @@ import {
   CHANNELS_PATH,
   CRITERIA_PATH,
   GEOCODER_URL,
+  MEDIA_RESOLUTION,
   MODEL_ID,
   PROMPT_PATH,
+  THINKING_LEVEL,
   ZONE_PATH,
   readLoginSettings,
   readSettings,
@@ -39,8 +41,10 @@ describe("readSettings", () => {
       criteriaPath: CRITERIA_PATH,
       geocoderUrl: GEOCODER_URL,
       locationIqToken: "locationiq-token",
+      mediaResolution: MEDIA_RESOLUTION,
       modelId: MODEL_ID,
       promptPath: PROMPT_PATH,
+      thinkingLevel: THINKING_LEVEL,
       zonePath: ZONE_PATH,
     });
   });
@@ -53,16 +57,20 @@ describe("readSettings", () => {
         CHANNELS_PATH: "/tmp/channels.txt",
         CRITERIA_PATH: "/tmp/criteria.md",
         GEOCODER_URL: "http://localhost:1234/search",
+        MEDIA_RESOLUTION: "medium",
         MODEL_ID: "test/model",
         PROMPT_PATH: "/tmp/prompt.md",
+        THINKING_LEVEL: "high",
         ZONE_PATH: "/tmp/zone.geojson",
       }),
     ).toMatchObject({
       channelsPath: "/tmp/channels.txt",
       criteriaPath: "/tmp/criteria.md",
       geocoderUrl: "http://localhost:1234/search",
+      mediaResolution: "medium",
       modelId: "test/model",
       promptPath: "/tmp/prompt.md",
+      thinkingLevel: "high",
       zonePath: "/tmp/zone.geojson",
     });
   });
@@ -89,5 +97,15 @@ describe("readSettings", () => {
   it("rejects malformed API_ID", () => {
     expect.hasAssertions();
     expect(() => readSettings({ ...validEnvironment, API_ID: "not-a-number" })).toThrow(/API_ID/u);
+  });
+
+  it.each([
+    ["MEDIA_RESOLUTION", "ultra"],
+    ["THINKING_LEVEL", "minimal"],
+  ])("rejects unsupported %s", (name, value) => {
+    expect.hasAssertions();
+    expect(() => readSettings({ ...validEnvironment, [name]: value })).toThrow(
+      new RegExp(`${name} must be one of`, "u"),
+    );
   });
 });

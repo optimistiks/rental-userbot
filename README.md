@@ -4,8 +4,8 @@ A Telegram userbot, logged in to your own account, that watches apartment rental
 post against a criteria file you write in plain language, and saves the ones worth a look to your Saved
 Messages.
 
-The judging is done by an AI agent. It reads the post, looks at the photos, and can call two tools to work
-out where the flat is: a geocoder and a check against an outline of the area you want to live in. The agent
+The judging is done by an AI agent. It reads the post, looks at the photos, and can call one location tool
+that geocodes a place and checks every candidate against an outline of the area you want to live in. The agent
 makes the final call on its own; no rule in the code overrides it.
 
 ## What it does with a post
@@ -83,9 +83,10 @@ Each post reads as a short story, and every line starts with its link, so `docke
 ```
 post https://t.me/x/12: considering — channel -1001234567890, 4 photos, "1+1 на Абусеридзе, 5 этаж, 650$…"
 post https://t.me/x/12: thinking — The photos show a renovated 1+1; the text gives DS Mall as the building.
-post https://t.me/x/12: geocode "DS Mall" → place "DS Mall, 5a, Tbel Abuseridze Street, Bagrationi II" (41.6400, 41.6220) in 214ms
-post https://t.me/x/12: inZone (41.6400, 41.6220) → outside
-post https://t.me/x/12: done in 6.4s, 2 steps, 4611 tokens in / 567 out (372 thinking)
+post https://t.me/x/12: step 1 usage — 3120 in (3120 new, ? cache read, ? cache write) / 180 out (40 text, 140 reasoning)
+post https://t.me/x/12: locateInZone "DS Mall" → place "DS Mall, 5a, Tbel Abuseridze Street, Bagrationi II" (41.6400, 41.6220) outside in 214ms
+post https://t.me/x/12: step 2 usage — 3440 in (320 new, 3120 cache read, ? cache write) / 120 out (70 text, 50 reasoning)
+post https://t.me/x/12: done in 6.4s, 2 steps, 6560 in (3440 new, 3120 cache read, ? cache write) / 300 out (110 text, 190 reasoning)
 post https://t.me/x/12: No match — Located at DS Mall, outside Old Town and Rustaveli.
 ```
 
@@ -145,6 +146,8 @@ your account, so keep `data/` off any shared disk.
 | Variable | Default | What it is |
 |---|---|---|
 | `MODEL_ID` | `google/gemini-3.8-flash` | Which model the agent runs on. It has to accept images. |
+| `MEDIA_RESOLUTION` | `low` | Gemini image resolution: `low`, `medium`, or `high`. |
+| `THINKING_LEVEL` | `low` | Gemini reasoning depth: `low`, `medium`, or `high`. |
 | `GEOCODER_URL` | `https://eu1.locationiq.com/v1/search` | Where the geocoder tool searches |
 | `CHANNELS_PATH` | `data/channels.txt` | The channels to watch, one ID per line |
 | `CRITERIA_PATH` | `data/criteria.md` | Your criteria file |
