@@ -15,7 +15,7 @@ type PostIdentity = Pick<Post, "chatId" | "messageIds" | "albumId">;
 
 interface ProcessedPosts {
   /**
-   * Runs `work` for a Post that is neither processed nor already being handled,
+   * Runs `work` for a Post that is neither processed nor already queued or being evaluated,
    * then records it as a Processed Post whether `work` succeeded or threw
    * (ADR-0002). A copy that arrives meanwhile, or later, is turned away at once.
    */
@@ -40,7 +40,7 @@ function openProcessedPosts(databasePath: string = BOT_DATABASE_PATH): Processed
   const insertPost = database.prepare(
     "INSERT OR IGNORE INTO processed_posts (post_key, processed_at) VALUES (?, ?)",
   );
-  // Posts queued or being handled, so a second copy never waits behind or runs alongside the first.
+  // Posts queued or being evaluated, so a second copy never waits behind or runs alongside the first.
   const inFlight = new Set<string>();
 
   return {
@@ -57,8 +57,9 @@ function openProcessedPosts(databasePath: string = BOT_DATABASE_PATH): Processed
       try {
         await work();
       } finally {
-        insertPost.run(key, Date.now());
+        // Released first, so a failed write cannot leave the Post held until a restart.
         inFlight.delete(key);
+        insertPost.run(key, Date.now());
       }
     },
   };

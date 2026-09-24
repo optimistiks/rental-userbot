@@ -6,13 +6,13 @@ import { z } from "zod";
 
 import type { Level, Settings } from "./config.js";
 import type { Listing } from "./listing.js";
-import type { Locator } from "./locate.js";
+import type { Locator } from "./locator.js";
 import type { OwnerFileContents } from "./owner-files.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { Zone } from "./zone.js";
 
 import { errorMessage, errorName, isRecord } from "./errors.js";
-import { describeLocated } from "./locate.js";
+import { describeLocated } from "./locator.js";
 import { createSentryReporter } from "./sentry.js";
 
 const verdictSchema = z.object({

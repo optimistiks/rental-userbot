@@ -6,6 +6,7 @@ File watching was rejected rather than overlooked. The bot is a Linux container 
 
 ## Consequences
 
+- "Fresh on every Post" means read once when the Post arrives. The Notice, the decision whether to judge and the judgement itself, retries included, all use that one read, so an edit applies to Posts that arrive after it and never to a Listing already waiting in the queue ([ADR-0006](0006-model-work-is-concurrent-telegram-work-is-serial.md)).
 - Reading the Watchlist is total: a line counts only if it is a marked channel ID, everything else is ignored without complaint, and a file that cannot be read at all means "watch nothing". No edit to that file can take the bot down, and `#` comments and labels work for free.
 - A file missing at startup is fatal and named; the same file vanishing under a running bot is not. The two mean different things — an incomplete setup versus a `mv` that will probably be undone in a second — and only the first is worth refusing to run over.
 - The owner's confirmation that an edit was picked up is a Notice in Saved Messages, on the next Post the account sees. A change is meaning, not bytes: the Watchlist's channel-ID set, the trimmed Criteria and Prompt, the Zone's polygons and names. Several files in one gap share one Notice.

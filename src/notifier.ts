@@ -38,7 +38,7 @@ function createNotifier(
       await telegram.sendToMe(notice);
     },
     async verdict({ link }, verdict) {
-      const message = messageFor(link, verdict);
+      const { log, message } = describeVerdict(link, verdict);
       if (message !== undefined) {
         try {
           await telegram.sendToMe(message);
@@ -48,25 +48,32 @@ function createNotifier(
         }
       }
 
-      console.log(`post ${link}: ${describeVerdict(verdict)}`);
+      console.log(`post ${link}: ${log}`);
     },
   };
 }
 
-function messageFor(link: string, verdict: Verdict): string | undefined {
-  if (verdict.kind === "evaluation-failure") {
-    return `${link}\n⚠️ couldn't evaluate: ${verdict.error}`;
+/** The log line for a Verdict, and the Saved Messages write if the owner should see it. */
+function describeVerdict(link: string, verdict: Verdict): { log: string; message?: string } {
+  switch (verdict.kind) {
+    case "match": {
+      return { log: `Match — ${verdict.notes}`, message: `${link}\n${verdict.notes}` };
+    }
+    case "no-match": {
+      return { log: `No match — ${verdict.notes}` };
+    }
+    case "evaluation-failure": {
+      return {
+        log: `Evaluation failure — ${verdict.error}`,
+        message: `${link}\n⚠️ couldn't evaluate: ${verdict.error}`,
+      };
+    }
+    default: {
+      // A Verdict kind added without a case here fails to compile.
+      const unhandled: never = verdict;
+      throw new Error(`unhandled Verdict: ${JSON.stringify(unhandled)}`);
+    }
   }
-
-  return verdict.kind === "match" ? `${link}\n${verdict.notes}` : undefined;
-}
-
-function describeVerdict(verdict: Verdict): string {
-  if (verdict.kind === "evaluation-failure") {
-    return `Evaluation failure — ${verdict.error}`;
-  }
-
-  return `${verdict.kind === "match" ? "Match" : "No match"} — ${verdict.notes}`;
 }
 
 export { type Notifier, createNotifier };

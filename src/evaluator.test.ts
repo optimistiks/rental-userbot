@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { EvaluationFailure, RetryPolicy } from "./evaluator.js";
 import type { Listing } from "./listing.js";
-import type { Locator } from "./locate.js";
+import type { Locator } from "./locator.js";
 import type { ErrorReporter } from "./sentry.js";
 
 import { createSentryReporter } from "./sentry.js";

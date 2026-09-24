@@ -9,7 +9,7 @@ import type { SessionClient, TelegramClientLike } from "./telegram.js";
 import { readLoginSettings, readSettings } from "./config.js";
 import { errorMessage } from "./errors.js";
 import { createEvaluator } from "./evaluator.js";
-import { createLocator } from "./locate.js";
+import { createLocator } from "./locator.js";
 import { createNotifier } from "./notifier.js";
 import { openOwnerFiles } from "./owner-files.js";
 import { createPostPipeline } from "./pipeline.js";

@@ -35,7 +35,7 @@ const UNIT_SQUARE = [
   [0, 0],
 ];
 
-/** A Listing from the watched channel: post text and three photos. */
+/** A Post from the watched channel with post text and three photos: enough to be a Listing. */
 function post(id: number, overrides: Partial<Post> = {}): Post {
   return {
     chatId: WATCHED_CHANNEL_ID,

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Fetcher } from "./geocoder.js";
 
-import { createLocator, describeLocated } from "./locate.js";
+import { createLocator, describeLocated } from "./locator.js";
 import { zoneCollection } from "./test-support.js";
 import { parseZone } from "./zone.js";
 

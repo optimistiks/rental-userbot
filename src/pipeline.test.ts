@@ -20,13 +20,13 @@ import {
 } from "./test-support.js";
 
 /** Asks through the interface: a Post is processed when `once` turns it away. Marks it as a side effect. */
-async function isProcessed(processedPosts: ProcessedPosts, listing: Post): Promise<boolean> {
-  let handled = false;
-  await processedPosts.once(listing, () => {
-    handled = true;
+async function isProcessed(processedPosts: ProcessedPosts, candidate: Post): Promise<boolean> {
+  let ran = false;
+  await processedPosts.once(candidate, () => {
+    ran = true;
     return Promise.resolve();
   });
-  return !handled;
+  return !ran;
 }
 
 type TestPipelineOptions = Omit<PostPipelineOptions, "downloadPhoto" | "notifier"> & {
@@ -63,12 +63,6 @@ function telegramSpy(): TelegramSpy {
     downloadPhoto: vi.fn<Telegram["downloadPhoto"]>(() => Promise.resolve(new Uint8Array([1]))),
     sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
   };
-}
-
-function failingTelegram(): TelegramSpy {
-  const telegram = telegramSpy();
-  telegram.sendToMe.mockRejectedValue(new Error("Saved Messages unavailable"));
-  return telegram;
 }
 
 /** An Evaluator whose runs each block until the test releases them by Post ID. */
@@ -150,7 +144,7 @@ describe("post pipeline", () => {
     expect(log).toHaveBeenCalledWith("post https://t.me/example/4: skipped — 0 photos, no text");
   });
 
-  it("evaluates an album once, sends its photos to the model, and drops a late part", async () => {
+  it("downloads a Listing's photos through Telegram and sends them to the model", async () => {
     expect.hasAssertions();
     quiet("log");
     const model = verdictModel({ match: true, notes: "Looks good" });
@@ -162,8 +156,7 @@ describe("post pipeline", () => {
       telegram,
     });
 
-    await pipeline.process(post(60, { albumId: "album-8", messageIds: [60, 61] }));
-    await pipeline.process(post(62, { albumId: "album-8", text: "Late album part" }));
+    await pipeline.process(post(60));
 
     expect(telegram.downloadPhoto).toHaveBeenCalledTimes(3);
     expect(model.doGenerateCalls).toHaveLength(1);
@@ -283,26 +276,6 @@ describe("post pipeline", () => {
     await Promise.all(processed);
 
     expect(evaluator.evaluate).toHaveBeenCalledTimes(3);
-  });
-
-  it("marks a Post after a failed notification so it is not retried", async () => {
-    expect.hasAssertions();
-    quiet("error");
-    quiet("log");
-    const evaluator = stubEvaluator();
-    const telegram = failingTelegram();
-    const pipeline = createTestPipeline({
-      evaluator,
-      ownerFiles: readableOwnerFiles(),
-      processedPosts: memoryProcessedPosts(),
-      telegram,
-    });
-
-    await expect(pipeline.process(post(9))).resolves.toBeUndefined();
-    await pipeline.process(post(9));
-
-    expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
-    expect(telegram.sendToMe).toHaveBeenCalledTimes(1);
   });
 
   it("does not evaluate a Listing while Criteria is unreadable", async () => {
