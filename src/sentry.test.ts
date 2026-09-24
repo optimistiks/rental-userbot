@@ -53,14 +53,6 @@ function fakeSentry(): FakeSentry {
   };
 }
 
-/** Runs the span body, then fails the span the way Sentry would on a thrown error. */
-function failAfterCalling(callback: (span: unknown) => unknown): never {
-  /* Not a Node error-first callback; it is the span body Sentry invokes. */
-  // oxlint-disable-next-line node/callback-return
-  callback({});
-  throw new Error("span failed");
-}
-
 describe("sentry reporter", () => {
   it("does nothing when SENTRY_DSN is unset", async () => {
     expect.hasAssertions();
@@ -148,20 +140,6 @@ describe("sentry reporter", () => {
     expect(() =>
       createSentryReporter("https://public@example.com/1", sentry as unknown as SentryApi),
     ).not.toThrow();
-  });
-
-  it("does not let a span lifecycle failure block or duplicate the operation", async () => {
-    expect.hasAssertions();
-    const sentry = fakeSentry();
-    const operation = vi.fn<() => Promise<string>>(() => Promise.resolve("done"));
-    sentry.startSpan.mockImplementation((_options, callback) => failAfterCalling(callback));
-    const reporter = createSentryReporter(
-      "https://public@example.com/1",
-      sentry as unknown as SentryApi,
-    );
-
-    await expect(reporter.run("https://t.me/example/3", operation)).resolves.toBe("done");
-    expect(operation).toHaveBeenCalledTimes(1);
   });
 
   it("scrubs credentials and database paths before sending error data", () => {

@@ -4,9 +4,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 import type { Fetcher } from "./geocoder.js";
 
-import { createGeocoder, precisionForMatchLevel } from "./geocoder.js";
+import { createGeocoder } from "./geocoder.js";
 
 const server = setupServer();
+
+const settings = {
+  geocoderUrl: "https://geocoder.test/v1/search",
+  locationIqToken: "secret-token",
+};
 
 describe("geocoder", () => {
   beforeAll(() => {
@@ -18,19 +23,6 @@ describe("geocoder", () => {
 
   afterAll(() => {
     server.close();
-  });
-
-  describe("precisionForMatchLevel", () => {
-    it.each([
-      ["building", "building"],
-      ["venue", "place"],
-      ["street", "street"],
-      ["city", "area"],
-      ["unknown", "area"],
-    ] as const)("maps %s to %s", (matchLevel, precision) => {
-      expect.hasAssertions();
-      expect(precisionForMatchLevel(matchLevel)).toBe(precision);
-    });
   });
 
   describe("createGeocoder", () => {
@@ -63,10 +55,7 @@ describe("geocoder", () => {
         }),
       );
 
-      const geocoder = createGeocoder({
-        token: "secret-token",
-        url: "https://geocoder.test/v1/search",
-      });
+      const geocoder = createGeocoder(settings);
 
       await expect(geocoder.geocode("Gorgasali 33")).resolves.toStrictEqual({
         results: [
@@ -105,10 +94,7 @@ describe("geocoder", () => {
         ),
       );
 
-      const geocoder = createGeocoder({
-        token: "secret-token",
-        url: "https://geocoder.test/v1/search",
-      });
+      const geocoder = createGeocoder(settings);
 
       await expect(geocoder.geocode("some place")).resolves.toStrictEqual({
         results: [{ label: "Batumi", lat: 41.64, lon: 41.62, precision }],
@@ -123,10 +109,7 @@ describe("geocoder", () => {
         ),
       );
 
-      const geocoder = createGeocoder({
-        token: "secret-token",
-        url: "https://geocoder.test/v1/search",
-      });
+      const geocoder = createGeocoder(settings);
 
       await expect(geocoder.geocode("missing")).resolves.toStrictEqual({ results: [] });
     });
@@ -139,10 +122,7 @@ describe("geocoder", () => {
         ),
       );
 
-      const geocoder = createGeocoder({
-        token: "secret-token",
-        url: "https://geocoder.test/v1/search",
-      });
+      const geocoder = createGeocoder(settings);
 
       await expect(geocoder.geocode("private")).rejects.toThrow(
         "LocationIQ request failed (401): Invalid key",
@@ -159,10 +139,7 @@ describe("geocoder", () => {
           new Error("aborted https://geocoder.test/v1/search?key=secret-token"),
         );
       });
-      const geocoder = createGeocoder(
-        { token: "secret-token", url: "https://geocoder.test/v1/search" },
-        fetcher,
-      );
+      const geocoder = createGeocoder(settings, fetcher);
 
       await expect(geocoder.geocode("slow", new AbortController().signal)).rejects.toThrow(
         "aborted https://geocoder.test/v1/search?key=[redacted]",
@@ -181,10 +158,7 @@ describe("geocoder", () => {
           return HttpResponse.json([]);
         }),
       );
-      const geocoder = createGeocoder({
-        token: "secret-token",
-        url: "https://geocoder.test/v1/search",
-      });
+      const geocoder = createGeocoder(settings);
       const controller = new AbortController();
       const request = geocoder.geocode("slow", controller.signal);
       controller.abort();

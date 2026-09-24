@@ -3,9 +3,7 @@ import type { EvaluationContext, EvaluationFailure, Evaluator, Verdict } from ".
 import type { Notices } from "./notices.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { Post, Telegram } from "./telegram.js";
-import type { Watchlist } from "./watchlist.js";
 
-import { isWatchedPost } from "./channel-filter.js";
 import { MIN_LISTING_PHOTOS } from "./config.js";
 import { postKey } from "./dedupe-store.js";
 import { evaluationFailure } from "./evaluator.js";
@@ -15,8 +13,8 @@ interface PostPipeline {
   process: (post: Post) => Promise<void>;
 }
 
+/** Posts reach the pipeline already filtered to the Watchlist by the Telegram adapter. */
 interface PostPipelineOptions {
-  watchlist: Watchlist;
   evaluator: Evaluator;
   telegram: Pick<Telegram, "sendToMe">;
   dedupeStore: DedupeStore;
@@ -79,16 +77,10 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
 
   return {
     process(post) {
-      // The watchlist is re-read here, so an edit to the file takes effect on this Post.
-      const channelIds = options.watchlist.channelIds();
       const noticePull = options.notices?.pull() ?? { canEvaluate: true };
       const noticeSend = deliverNotice(post, noticePull.notice, options, errorReporter);
 
       if (!noticePull.canEvaluate) {
-        return noticeSend;
-      }
-
-      if (!isWatchedPost(post, channelIds)) {
         return noticeSend;
       }
 
@@ -191,4 +183,4 @@ function isEvaluationFailure(verdict: Verdict): verdict is EvaluationFailure {
   return "kind" in verdict && verdict.kind === "evaluation-failure";
 }
 
-export { type PostPipeline, type PostPipelineOptions, createPostPipeline };
+export { type PostPipeline, createPostPipeline };

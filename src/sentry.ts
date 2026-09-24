@@ -68,17 +68,8 @@ function createSentryReporter(dsn?: string, api: SentryApi = Sentry): ErrorRepor
     return disabledReporter;
   }
 
-  const capturedErrors = new WeakSet();
-
   return {
     captureException(error, context) {
-      if (typeof error === "object" && error !== null) {
-        if (capturedErrors.has(error)) {
-          return;
-        }
-        capturedErrors.add(error);
-      }
-
       try {
         api.withScope((scope) => {
           if (context?.postLink !== undefined) {
@@ -95,26 +86,14 @@ function createSentryReporter(dsn?: string, api: SentryApi = Sentry): ErrorRepor
     },
     enabled: true,
     run<T>(postLink: string, operation: () => Promise<T>) {
-      // The span has to wrap the run to measure it, but Sentry must never change
-      // The outcome: if startSpan itself fails, fall back to the bare operation,
-      // Reusing the started one so a Post is never evaluated twice.
-      let started: Promise<T> | undefined;
-      const startOperation = (): Promise<T> => (started = operation());
-
-      try {
-        return Promise.resolve(
-          api.startSpan(
-            {
-              attributes: { "telegram.post.link": postLink },
-              name: "Evaluate Telegram Post",
-              op: "rental.evaluation",
-            },
-            startOperation,
-          ),
-        );
-      } catch {
-        return started ?? operation();
-      }
+      return api.startSpan(
+        {
+          attributes: { "telegram.post.link": postLink },
+          name: "Evaluate Telegram Post",
+          op: "rental.evaluation",
+        },
+        operation,
+      );
     },
   };
 }
@@ -166,21 +145,4 @@ function sanitizeSentryValue(value: unknown, seen = new WeakMap<object, unknown>
   return sanitized;
 }
 
-let runtimeReporter: ErrorReporter = disabledReporter;
-
-function initializeSentry(dsn: string | undefined): ErrorReporter {
-  if (!runtimeReporter.enabled) {
-    runtimeReporter = createSentryReporter(dsn);
-  }
-  return runtimeReporter;
-}
-
-export {
-  type SentryApi,
-  type ErrorPhase,
-  type ErrorContext,
-  type ErrorReporter,
-  createSentryReporter,
-  sanitizeSentryText,
-  initializeSentry,
-};
+export { type SentryApi, type ErrorReporter, createSentryReporter, sanitizeSentryText };

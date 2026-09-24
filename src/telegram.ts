@@ -2,13 +2,9 @@ import type { FileDownloadLocation, Message } from "@mtcute/node";
 
 import { TelegramClient, networkMiddlewares } from "@mtcute/node";
 
-import type { LoginSettings, Settings } from "./config.js";
+import type { LoginSettings } from "./config.js";
 
-import { isWatchedPost } from "./channel-filter.js";
 import { MAX_PHOTOS } from "./config.js";
-
-const SESSION_PATH = "data/session.sqlite";
-const MESSAGE_GROUPING_INTERVAL = 1000;
 
 /**
  * Stamped on every write to Saved Messages so the owner can filter what the bot
@@ -19,15 +15,6 @@ const MESSAGE_GROUPING_INTERVAL = 1000;
 const SAVED_MESSAGES_TAG = "#rental_userbot";
 const MAX_TELEGRAM_MESSAGE_LENGTH = 4096;
 
-/**
- * Telegram answers a flood wait with "back off for N seconds". mtcute sleeps
- * through waits up to 10s by default and throws above that; the process would
- * then die mid-flood. Sleeping through waits up to 5 minutes obeys Telegram
- * instead of arguing with it.
- */
-const MAX_FLOOD_WAIT_MS = 300_000;
-const MAX_FLOOD_RETRIES = 3;
-
 /** Pinned so an mtcute upgrade doesn't silently change how this session is listed under Telegram's Devices. */
 const DEVICE_INFO = {
   appVersion: "0.1.0",
@@ -35,9 +22,8 @@ const DEVICE_INFO = {
   systemVersion: "docker",
 } as const;
 
-interface PhotoRef {
-  readonly __photoRef: true;
-}
+/** Where one photo of a Post can be downloaded from. */
+type PhotoRef = FileDownloadLocation;
 
 interface Post {
   chatId: number;
@@ -67,51 +53,45 @@ interface TelegramClientLike {
 
 type TelegramClientOptions = ConstructorParameters<typeof TelegramClient>[0];
 
-function telegramClientOptions(
-  settings: Pick<LoginSettings, "apiId" | "apiHash">,
-): TelegramClientOptions {
+function telegramClientOptions(settings: LoginSettings): TelegramClientOptions {
   return {
     apiHash: settings.apiHash,
     apiId: settings.apiId,
     initConnectionOptions: DEVICE_INFO,
     network: {
+      /* Telegram answers a flood wait with "back off for N seconds". mtcute sleeps
+         through waits up to 10s by default and throws above that; the process would
+         then die mid-flood. Sleeping through waits up to 5 minutes obeys Telegram
+         instead of arguing with it. */
       middlewares: networkMiddlewares.basic({
-        floodWaiter: { maxRetries: MAX_FLOOD_RETRIES, maxWait: MAX_FLOOD_WAIT_MS },
+        floodWaiter: { maxRetries: 3, maxWait: 300_000 },
       }),
     },
-    storage: SESSION_PATH,
+    storage: "data/session.sqlite",
     updates: {
       catchUp: false,
-      messageGroupingInterval: MESSAGE_GROUPING_INTERVAL,
+      messageGroupingInterval: 1000,
     },
   };
 }
 
-function createTelegramClient(settings: Pick<Settings, "apiId" | "apiHash">): TelegramClient {
+function createTelegramClient(settings: LoginSettings): TelegramClient {
   return new TelegramClient(telegramClientOptions(settings));
 }
 
-const daemonStartParams = {
-  code: (): Promise<string> => Promise.reject(new Error("run login first")),
-  password: (): Promise<string> => Promise.reject(new Error("run login first")),
-  phone: (): Promise<string> => Promise.reject(new Error("run login first")),
-};
+const refuseLogin = (): Promise<string> => Promise.reject(new Error("run login first"));
+
+/** The daemon never prompts: a session that needs a code or password goes through `login`. */
+const daemonStartParams = { code: refuseLogin, password: refuseLogin, phone: refuseLogin };
 
 interface SessionClient {
   start: (params?: typeof daemonStartParams) => Promise<unknown>;
-}
-
-async function startDaemonSession(client: SessionClient): Promise<void> {
-  await client.start(daemonStartParams);
 }
 
 function createTelegramAdapter(
   client: TelegramClientLike,
   channelIds: () => readonly number[],
 ): Telegram {
-  const postHandlers: ((post: Post) => void)[] = [];
-  const photoLocations = new WeakMap<object, FileDownloadLocation>();
-  let postStreamStarted = false;
   let callTail: Promise<unknown> = Promise.resolve();
 
   /* Listings are evaluated concurrently, but the account still makes one explicit
@@ -126,76 +106,48 @@ function createTelegramAdapter(
     return result;
   }
 
-  function startPostStream(): void {
-    if (postStreamStarted) {
-      return;
-    }
-
-    postStreamStarted = true;
-    client.onNewMessage.add((message) => {
-      emitPost([message]);
-    });
-    client.onMessageGroup.add((messages) => {
-      emitPost(messages);
-    });
-  }
-
-  function emitPost(messages: readonly Message[]): void {
+  function toPost(messages: readonly Message[]): Post | undefined {
     const postMessages = messages
       .filter((message) => !message.isService)
       .toSorted((left, right) => left.id - right.id);
 
     if (postMessages.length === 0) {
-      return;
+      return undefined;
     }
 
     const [firstMessage] = postMessages;
     // Applied before Message.link: a user chat has no permalink and mtcute throws, restarting the updates loop.
-    if (!isWatchedPost({ chatId: firstMessage.chat.id }, channelIds())) {
-      return;
+    if (!channelIds().includes(firstMessage.chat.id)) {
+      return undefined;
     }
 
     const albumId = firstMessage.groupedIdUnique;
-    const post: Post = {
+    return {
       chatId: firstMessage.chat.id,
       link: firstMessage.link,
       messageIds: postMessages.map((message) => message.id),
-      photos: postMessages.flatMap((message) => photoRefFor(message)).slice(0, MAX_PHOTOS),
+      photos: postMessages.flatMap((message) => photoOf(message)).slice(0, MAX_PHOTOS),
       text: postMessages
         .map((message) => message.text)
         .filter((text) => text !== "")
         .join("\n\n"),
       ...(albumId === undefined || albumId === null ? {} : { albumId }),
     };
-
-    for (const handler of postHandlers) {
-      handler(post);
-    }
-  }
-
-  function photoRefFor(message: Message): PhotoRef[] {
-    const { media } = message;
-    if (media?.type !== "photo") {
-      return [];
-    }
-
-    const location = media.getThumbnail("y") ?? media.getThumbnail("x") ?? media;
-    const ref = { __photoRef: true } as const;
-    photoLocations.set(ref, location);
-    return [ref];
   }
 
   return {
-    async downloadPhoto(ref) {
-      const location = photoLocations.get(ref);
-      if (location === undefined) {
-        throw new Error("Unknown Telegram photo reference");
-      }
-      return oneAtATime(() => client.downloadAsBuffer(location));
-    },
+    downloadPhoto: (ref) => oneAtATime(() => client.downloadAsBuffer(ref)),
     onPost(handler) {
-      postHandlers.push(handler);
-      startPostStream();
+      const emit = (messages: readonly Message[]): void => {
+        const post = toPost(messages);
+        if (post !== undefined) {
+          handler(post);
+        }
+      };
+      client.onNewMessage.add((message) => {
+        emit([message]);
+      });
+      client.onMessageGroup.add(emit);
     },
     async sendToMe(text) {
       await oneAtATime(() =>
@@ -205,25 +157,26 @@ function createTelegramAdapter(
   };
 }
 
+function photoOf(message: Message): PhotoRef[] {
+  const { media } = message;
+  return media?.type === "photo"
+    ? [media.getThumbnail("y") ?? media.getThumbnail("x") ?? media]
+    : [];
+}
+
 /** Tagging and the length cap belong together: the tag counts against the limit. */
 function taggedForSavedMessages(text: string): string {
   return `${SAVED_MESSAGES_TAG}\n${text}`.slice(0, MAX_TELEGRAM_MESSAGE_LENGTH);
 }
 
 export {
-  SESSION_PATH,
-  MESSAGE_GROUPING_INTERVAL,
-  MAX_FLOOD_WAIT_MS,
-  MAX_FLOOD_RETRIES,
-  DEVICE_INFO,
   type PhotoRef,
   type Post,
   type Telegram,
   type TelegramClientLike,
+  type SessionClient,
   telegramClientOptions,
   createTelegramClient,
   daemonStartParams,
-  type SessionClient,
-  startDaemonSession,
   createTelegramAdapter,
 };

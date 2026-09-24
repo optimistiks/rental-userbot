@@ -1,28 +1,31 @@
 /* Composition root: every daemon collaborator is constructed here. */
 // oxlint-disable import/max-dependencies
 import type { LoginSettings, Settings } from "./config.js";
+import type { DedupeStore } from "./dedupe-store.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { SessionLock } from "./session-lock.js";
 import type { SessionClient, TelegramClientLike } from "./telegram.js";
 
 import { readLoginSettings, readSettings } from "./config.js";
+import { openDedupeStore } from "./dedupe-store.js";
 import { errorMessage } from "./errors.js";
+import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
 import { createGeocoder } from "./geocoder.js";
 import { createNotices } from "./notices.js";
 import { createPostPipeline } from "./pipeline.js";
-import { initializeSentry } from "./sentry.js";
+import { createSentryReporter } from "./sentry.js";
 import { acquireSessionLock } from "./session-lock.js";
-import { announceStartup, initializeStartup } from "./startup.js";
-import { createTelegramAdapter, createTelegramClient, startDaemonSession } from "./telegram.js";
-import { createWatchlist } from "./watchlist.js";
-import { createZoneChecker } from "./zone.js";
+import { createTelegramAdapter, createTelegramClient, daemonStartParams } from "./telegram.js";
+import { readTextFile } from "./text-file.js";
+import { readWatchlistFile, watchedChannelIds, watchingMessage } from "./watchlist.js";
+import { createZoneChecker, readZoneFile } from "./zone.js";
 
 type ManagedClient = TelegramClientLike &
   SessionClient & {
     destroy: () => Promise<void>;
   };
 
-type ClientFactory = (settings: Pick<Settings, "apiId" | "apiHash">) => ManagedClient;
+type ClientFactory = (settings: LoginSettings) => ManagedClient;
 
 async function runLogin(
   settings: LoginSettings,
@@ -41,36 +44,36 @@ async function runLogin(
 
 async function runDaemon(
   settings: Settings,
+  errorReporter: ErrorReporter,
   makeClient: ClientFactory = createTelegramClient,
   databasePath?: string,
-  errorReporter: ErrorReporter = initializeSentry(settings.sentryDsn),
   lock: SessionLock = acquireSessionLock(),
 ): Promise<void> {
-  let resources: ReturnType<typeof initializeStartup> | undefined;
+  let dedupeStore: DedupeStore | undefined;
   let client: ManagedClient | undefined;
 
   try {
-    resources = initializeStartup(settings, databasePath);
-    const { createEvaluator, createEvaluatorTools } = await import("./evaluator.js");
+    // Read-and-discard: every one of these is re-read while the bot runs, so this is
+    // Only the startup check that they exist and parse. A watchlist missing here means
+    // The setup was never finished; one that vanishes later just means watching nothing.
+    readTextFile(settings.criteriaPath, "Criteria");
+    readTextFile(settings.promptPath, "Prompt");
+    readZoneFile(settings.zonePath);
+    readWatchlistFile(settings.channelsPath);
+    dedupeStore = openDedupeStore(databasePath);
     client = makeClient(settings);
-    await startDaemonSession(client);
-    const watchlist = createWatchlist(settings.channelsPath);
-    const telegram = createTelegramAdapter(client, () => watchlist.channelIds());
-    const notices = createNotices({
-      channelsPath: settings.channelsPath,
-      criteriaPath: settings.criteriaPath,
-      promptPath: settings.promptPath,
-      zonePath: settings.zonePath,
-    });
-    await announceStartup(telegram, watchlist.channelIds());
-    const geocoder = createGeocoder({
-      token: settings.locationIqToken,
-      url: settings.geocoderUrl,
-    });
+    await client.start(daemonStartParams);
+    const channelIds = (): number[] => watchedChannelIds(settings.channelsPath);
+    const telegram = createTelegramAdapter(client, channelIds);
+    const notices = createNotices(settings);
+    const startupNotice = `🟢 started, ${watchingMessage(channelIds().length)}`;
+    console.log(`startup: ${startupNotice}`);
+    await telegram.sendToMe(startupNotice);
+    const geocoder = createGeocoder(settings);
     const zoneChecker = createZoneChecker(settings.zonePath);
     const pipeline = createPostPipeline({
       concurrency: settings.evaluationConcurrency,
-      dedupeStore: resources.dedupeStore,
+      dedupeStore,
       errorReporter,
       evaluator: createEvaluator(settings, {
         downloadPhoto: telegram.downloadPhoto,
@@ -82,7 +85,6 @@ async function runDaemon(
       }),
       notices,
       telegram,
-      watchlist,
     });
     telegram.onPost((post) => {
       /* The onPost callback returns void, so the pipeline promise is deliberately
@@ -94,9 +96,8 @@ async function runDaemon(
       });
     });
   } catch (error) {
-    errorReporter.captureException(error);
     lock.release();
-    resources?.dedupeStore.close();
+    dedupeStore?.close();
 
     if (client !== undefined) {
       try {
@@ -114,19 +115,14 @@ async function start(
   argv: readonly string[] = process.argv,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  let errorReporter: ErrorReporter | undefined;
+  const errorReporter =
+    argv[2] === "login" ? undefined : createSentryReporter(env.SENTRY_DSN?.trim());
   try {
-    if (argv[2] === "login") {
-      await runLogin(readLoginSettings(env));
-    } else {
-      const settings = readSettings(env);
-      errorReporter = initializeSentry(settings.sentryDsn);
-      await runDaemon(settings, createTelegramClient, undefined, errorReporter);
-    }
+    await (errorReporter === undefined
+      ? runLogin(readLoginSettings(env))
+      : runDaemon(readSettings(env), errorReporter));
   } catch (error) {
-    if (argv[2] !== "login") {
-      (errorReporter ?? initializeSentry(env.SENTRY_DSN)).captureException(error);
-    }
+    errorReporter?.captureException(error);
     console.error(errorMessage(error));
     process.exitCode = 1;
   }

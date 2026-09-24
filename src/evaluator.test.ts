@@ -1,39 +1,93 @@
 import { MockLanguageModelV4 } from "ai/test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { rmSync, writeFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
-import type { EvaluatorOptions, EvaluatorToolImplementations } from "./evaluator.js";
+import type { EvaluationFailure, EvaluatorToolImplementations, RetryPolicy } from "./evaluator.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef } from "./telegram.js";
 
-import { createEvaluator, createEvaluatorTools, describeUsage } from "./evaluator.js";
+import { createEvaluatorTools } from "./evaluator.js";
+import {
+  ownerFiles,
+  post,
+  quiet,
+  testEvaluator,
+  testSettings,
+  usage,
+  verdictModel,
+} from "./test-support.js";
 
-const usage = {
-  inputTokens: { cacheRead: undefined, cacheWrite: undefined, noCache: 10, total: 10 },
-  outputTokens: { reasoning: undefined, text: 5, total: 5 },
-};
+type GenerateResult = Awaited<
+  ReturnType<
+    Extract<
+      NonNullable<ConstructorParameters<typeof MockLanguageModelV4>[0]>["doGenerate"],
+      (options: never) => unknown
+    >
+  >
+>;
 
-function modelFor(...verdicts: { match: boolean; notes: string }[]): MockLanguageModelV4 {
+/** The agent asks to locate `query`, then answers with `verdict`. */
+function locatingModel(
+  query: string,
+  verdict: { match: boolean; notes: string },
+): MockLanguageModelV4 {
   return new MockLanguageModelV4({
-    doGenerate: verdicts.map((verdict) => ({
-      content: [{ text: JSON.stringify(verdict), type: "text" as const }],
-      finishReason: { raw: undefined, unified: "stop" as const },
-      usage,
-      warnings: [],
-    })),
+    doGenerate: [
+      {
+        content: [
+          {
+            input: JSON.stringify({ query }),
+            toolCallId: "locate-1",
+            toolName: "locateInZone",
+            type: "tool-call",
+          },
+        ],
+        finishReason: { raw: undefined, unified: "tool-calls" },
+        usage,
+        warnings: [],
+      },
+      {
+        content: [{ text: JSON.stringify(verdict), type: "text" }],
+        finishReason: { raw: undefined, unified: "stop" },
+        usage,
+        warnings: [],
+      },
+    ],
   });
+}
+
+/** Never resolves: rejects when the signal aborts, or at once if it is missing or already aborted. */
+function rejectWhenAborted(abortSignal: AbortSignal | undefined): Promise<never> {
+  return new Promise<never>((_resolve, reject) => {
+    if (abortSignal === undefined) {
+      reject(new Error("abort signal was not provided"));
+      return;
+    }
+
+    if (abortSignal.aborted) {
+      reject(abortSignal.reason as Error);
+      return;
+    }
+
+    abortSignal.addEventListener(
+      "abort",
+      () => {
+        reject(abortSignal.reason as Error);
+      },
+      { once: true },
+    );
+  });
+}
+
+function retryPolicy(timeoutMs = 100): RetryPolicy {
+  return { attempts: 3, backoffsMs: [0, 0], maxSteps: 8, timeoutMs };
 }
 
 describe("evaluator", () => {
   it("runs agent telemetry under the Post link and reports evaluation failures", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-    const promptPath = path.join(directory, "prompt.md");
-    const criteriaPath = path.join(directory, "criteria.md");
-    writeFileSync(promptPath, "Prompt");
-    writeFileSync(criteriaPath, "Criteria");
+    quiet("error");
+    quiet("log");
     const model = new MockLanguageModelV4({
       doGenerate: (): Promise<never> => Promise.reject(new Error("gateway failed")),
     });
@@ -46,40 +100,25 @@ describe("evaluator", () => {
       enabled: true,
       run,
     } as unknown as ErrorReporter;
-    const evaluator = createEvaluator(
-      { criteriaPath, modelId: "test/model", promptPath },
-      {
-        errorReporter,
-        model,
-        retryPolicy: { attempts: 1, backoffsMs: [], maxSteps: 8, timeoutMs: 100 },
-      },
-    );
-    const error = vi.spyOn(console, "error").mockImplementation(() => {
-      /* Keep test output quiet. */
+    const evaluator = testEvaluator(model, {
+      errorReporter,
+      retryPolicy: { attempts: 1, backoffsMs: [], maxSteps: 8, timeoutMs: 100 },
     });
 
-    await expect(
-      evaluator.evaluate({
-        link: "https://t.me/example/53",
-        text: "Flat",
-      }),
-    ).resolves.toMatchObject({ kind: "evaluation-failure" });
+    await expect(evaluator.evaluate(post(53))).resolves.toMatchObject({
+      kind: "evaluation-failure",
+    });
 
     expect(run).toHaveBeenCalledWith("https://t.me/example/53", expect.any(Function));
     expect(errorReporter.captureException).toHaveBeenCalledWith(expect.any(Error), {
       phase: "evaluation",
       postLink: "https://t.me/example/53",
     });
-    error.mockRestore();
   });
 
   it("lets the agent locate every geocoder candidate in the Zone before returning its Verdict", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-    const promptPath = path.join(directory, "prompt.md");
-    const criteriaPath = path.join(directory, "criteria.md");
-    writeFileSync(promptPath, "Prompt");
-    writeFileSync(criteriaPath, "Criteria");
+    const log = quiet("log");
     const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(() =>
       Promise.resolve({
         results: [
@@ -102,56 +141,17 @@ describe("evaluator", () => {
       .fn<EvaluatorToolImplementations["inZone"]>()
       .mockReturnValueOnce({ inside: true, zone: "Old Batumi" })
       .mockReturnValueOnce({ inside: false, zone: null });
-    const model = new MockLanguageModelV4({
-      doGenerate: [
-        {
-          content: [
-            {
-              input: JSON.stringify({ query: "Gorgasali 33" }),
-              toolCallId: "locate-1",
-              toolName: "locateInZone",
-              type: "tool-call",
-            },
-          ],
-          finishReason: { raw: undefined, unified: "tool-calls" },
-          usage,
-          warnings: [],
-        },
-        {
-          content: [
-            { text: JSON.stringify({ match: true, notes: "In Old Batumi" }), type: "text" },
-          ],
-          finishReason: { raw: undefined, unified: "stop" },
-          usage,
-          warnings: [],
-        },
-      ],
-    });
-    const log = vi.spyOn(console, "log").mockImplementation(() => {
-      /* Keep test output quiet. */
-    });
-    const evaluator = createEvaluator(
-      { criteriaPath, modelId: "test/model", promptPath },
-      {
-        model,
-        tools: createEvaluatorTools({ geocode, inZone }),
-      },
-    );
+    const model = locatingModel("Gorgasali 33", { match: true, notes: "In Old Batumi" });
+    const evaluator = testEvaluator(model, { tools: createEvaluatorTools({ geocode, inZone }) });
 
     await expect(
-      evaluator.evaluate({
-        link: "https://t.me/example/52",
-        text: "Flat at Gorgasali 33",
-      }),
+      evaluator.evaluate(post(52, { text: "Flat at Gorgasali 33" })),
     ).resolves.toStrictEqual({ match: true, notes: "In Old Batumi" });
 
     expect(geocode).toHaveBeenCalledWith("Gorgasali 33", expect.anything());
     expect(inZone).toHaveBeenNthCalledWith(1, { lat: 41.6481086, lon: 41.6393883 });
     expect(inZone).toHaveBeenNthCalledWith(2, { lat: 41.641, lon: 41.62 });
     expect(model.doGenerateCalls).toHaveLength(2);
-    expect(model.doGenerateCalls[1].prompt).toContainEqual(
-      expect.objectContaining({ role: "tool" }),
-    );
     expect(JSON.stringify(model.doGenerateCalls[1].prompt)).toContain(
       '"label":"Gorgasali Street, Batumi","lat":41.641,"lon":41.62,"precision":"street","zone":null',
     );
@@ -162,53 +162,20 @@ describe("evaluator", () => {
     );
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/step 1 usage — 10 in/u));
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/done in .*s, \d+ steps?, /u));
-    log.mockRestore();
   });
 
   it("returns tool errors to the agent so it can recover in the same run", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-    const promptPath = path.join(directory, "prompt.md");
-    const criteriaPath = path.join(directory, "criteria.md");
-    writeFileSync(promptPath, "Prompt");
-    writeFileSync(criteriaPath, "Criteria");
-    const model = new MockLanguageModelV4({
-      doGenerate: [
-        {
-          content: [
-            {
-              input: JSON.stringify({ query: "Unknown address" }),
-              toolCallId: "locate-error-1",
-              toolName: "locateInZone",
-              type: "tool-call",
-            },
-          ],
-          finishReason: { raw: undefined, unified: "tool-calls" },
-          usage,
-          warnings: [],
-        },
-        {
-          content: [
-            { text: JSON.stringify({ match: false, notes: "Location unclear" }), type: "text" },
-          ],
-          finishReason: { raw: undefined, unified: "stop" },
-          usage,
-          warnings: [],
-        },
-      ],
+    quiet("log");
+    const model = locatingModel("Unknown address", { match: false, notes: "Location unclear" });
+    const evaluator = testEvaluator(model, {
+      tools: createEvaluatorTools({
+        geocode: () => Promise.reject(new Error("provider unavailable")),
+        inZone: () => ({ inside: false, zone: null }),
+      }),
     });
-    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(() =>
-      Promise.reject(new Error("provider unavailable")),
-    );
-    const evaluator = createEvaluator(
-      { criteriaPath, modelId: "test/model", promptPath },
-      {
-        model,
-        tools: createEvaluatorTools({ geocode, inZone: () => ({ inside: false, zone: null }) }),
-      },
-    );
 
-    await expect(evaluator.evaluate({ text: "Flat" })).resolves.toStrictEqual({
+    await expect(evaluator.evaluate(post(1))).resolves.toStrictEqual({
       match: false,
       notes: "Location unclear",
     });
@@ -217,170 +184,27 @@ describe("evaluator", () => {
     );
   });
 
-  it("logs a schema-invalid tool call before the agent recovers", async () => {
-    expect.hasAssertions();
-    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-    const promptPath = path.join(directory, "prompt.md");
-    const criteriaPath = path.join(directory, "criteria.md");
-    writeFileSync(promptPath, "Prompt");
-    writeFileSync(criteriaPath, "Criteria");
-    const model = new MockLanguageModelV4({
-      doGenerate: [
-        {
-          content: [
-            {
-              input: JSON.stringify({ query: 42 }),
-              toolCallId: "invalid-locate-1",
-              toolName: "locateInZone",
-              type: "tool-call",
-            },
-          ],
-          finishReason: { raw: undefined, unified: "tool-calls" },
-          usage,
-          warnings: [],
-        },
-        {
-          content: [
-            {
-              text: JSON.stringify({ match: false, notes: "Invalid location query" }),
-              type: "text",
-            },
-          ],
-          finishReason: { raw: undefined, unified: "stop" },
-          usage,
-          warnings: [],
-        },
-      ],
-    });
-    const log = vi.spyOn(console, "log").mockImplementation(() => {
-      /* Keep test output quiet. */
-    });
-    const evaluator = createEvaluator(
-      { criteriaPath, modelId: "test/model", promptPath },
-      {
-        model,
-        tools: createEvaluatorTools({
-          geocode: vi.fn<EvaluatorToolImplementations["geocode"]>(() =>
-            Promise.resolve({ results: [] }),
-          ),
-          inZone: () => ({ inside: false, zone: null }),
-        }),
-      },
-    );
-
-    await expect(evaluator.evaluate({ text: "Flat" })).resolves.toStrictEqual({
-      match: false,
-      notes: "Invalid location query",
-    });
-    expect(log).toHaveBeenCalledWith(expect.stringMatching(/locateInZone .* → failed: /u));
-    log.mockRestore();
-  });
-
-  it("logs a collapsed preview of the whole thought, not only the heading", async () => {
-    expect.hasAssertions();
-    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-    const promptPath = path.join(directory, "prompt.md");
-    const criteriaPath = path.join(directory, "criteria.md");
-    writeFileSync(promptPath, "Prompt");
-    writeFileSync(criteriaPath, "Criteria");
-    const model = new MockLanguageModelV4({
-      doGenerate: {
-        content: [
-          {
-            text: "**My Thought Process**\n\nThe photos show a hillside cottage, not Old Town.",
-            type: "reasoning",
-          },
-          {
-            text: JSON.stringify({ match: false, notes: "Outside the Zone" }),
-            type: "text",
-          },
-        ],
-        finishReason: { raw: undefined, unified: "stop" },
-        usage,
-        warnings: [],
-      },
-    });
-    const log = vi.spyOn(console, "log").mockImplementation(() => {
-      /* Keep test output quiet. */
-    });
-    const evaluator = createEvaluator(
-      { criteriaPath, modelId: "test/model", promptPath },
-      { model },
-    );
-
-    await expect(
-      evaluator.evaluate({ link: "https://t.me/example/90", text: "Flat" }),
-    ).resolves.toStrictEqual({ match: false, notes: "Outside the Zone" });
-
-    expect(log).toHaveBeenCalledWith(
-      "post https://t.me/example/90: thinking — **My Thought Process** The photos show a hillside cottage, not Old Town.",
-    );
-    log.mockRestore();
-  });
-
-  it("caps a long thought preview at 300 characters", async () => {
-    expect.hasAssertions();
-    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-    const promptPath = path.join(directory, "prompt.md");
-    const criteriaPath = path.join(directory, "criteria.md");
-    writeFileSync(promptPath, "Prompt");
-    writeFileSync(criteriaPath, "Criteria");
-    const body = `${"x".repeat(300)}Y`;
-    const model = new MockLanguageModelV4({
-      doGenerate: {
-        content: [
-          { text: body, type: "reasoning" },
-          { text: JSON.stringify({ match: false, notes: "No" }), type: "text" },
-        ],
-        finishReason: { raw: undefined, unified: "stop" },
-        usage,
-        warnings: [],
-      },
-    });
-    const log = vi.spyOn(console, "log").mockImplementation(() => {
-      /* Keep test output quiet. */
-    });
-    const evaluator = createEvaluator(
-      { criteriaPath, modelId: "test/model", promptPath },
-      { model },
-    );
-
-    await evaluator.evaluate({ link: "https://t.me/example/91", text: "Flat" });
-
-    expect(log).toHaveBeenCalledWith(
-      `post https://t.me/example/91: thinking — ${"x".repeat(300)}…`,
-    );
-    log.mockRestore();
-  });
-
   it("re-reads the prompt and Criteria and returns the structured Verdict", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-    const promptPath = path.join(directory, "prompt.md");
-    const criteriaPath = path.join(directory, "criteria.md");
-    writeFileSync(promptPath, "Prompt version one");
-    writeFileSync(criteriaPath, "Criteria version one");
-    const model = modelFor(
+    quiet("log");
+    const files = ownerFiles();
+    writeFileSync(files.promptPath, "Prompt version one");
+    writeFileSync(files.criteriaPath, "Criteria version one");
+    const model = verdictModel(
       { match: true, notes: "First notes" },
       { match: false, notes: "Second notes" },
     );
-    const evaluator = createEvaluator(
-      { criteriaPath, modelId: "test/model", promptPath },
-      { model },
-    );
-    const log = vi.spyOn(console, "log").mockImplementation(() => {
-      /* Keep test output quiet. */
-    });
+    const evaluator = testEvaluator(model, {}, testSettings(files));
 
-    await expect(evaluator.evaluate({ text: "First Post" })).resolves.toStrictEqual({
+    await expect(evaluator.evaluate(post(1, { text: "First Post" }))).resolves.toStrictEqual({
       match: true,
       notes: "First notes",
     });
 
-    writeFileSync(promptPath, "Prompt version two");
-    writeFileSync(criteriaPath, "Criteria version two");
+    writeFileSync(files.promptPath, "Prompt version two");
+    writeFileSync(files.criteriaPath, "Criteria version two");
 
-    await expect(evaluator.evaluate({ text: "Second Post" })).resolves.toStrictEqual({
+    await expect(evaluator.evaluate(post(2, { text: "Second Post" }))).resolves.toStrictEqual({
       match: false,
       notes: "Second notes",
     });
@@ -394,45 +218,28 @@ describe("evaluator", () => {
     expect(secondPrompt).toContain("Prompt version two");
     expect(secondPrompt).toContain("Criteria version two");
     expect(secondPrompt).toContain("Second Post");
-    expect(log).toHaveBeenCalledWith(expect.any(String));
-    log.mockRestore();
   });
 
   it("downloads photos once and sends them after the Post text", async () => {
     expect.hasAssertions();
-    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-    const promptPath = path.join(directory, "prompt.md");
-    const criteriaPath = path.join(directory, "criteria.md");
-    writeFileSync(promptPath, "Prompt");
-    writeFileSync(criteriaPath, "Criteria");
-    const firstPhoto = { __photoRef: true } as PhotoRef;
-    const secondPhoto = { __photoRef: true } as PhotoRef;
+    quiet("log");
     const downloadPhoto = vi
       .fn<(photo: PhotoRef) => Promise<Uint8Array>>()
       .mockResolvedValueOnce(new Uint8Array([1, 2]))
       .mockResolvedValueOnce(new Uint8Array([3, 4]));
-    const model = modelFor({ match: true, notes: "Looks good" });
-    const evaluator = createEvaluator(
-      {
-        criteriaPath,
-        mediaResolution: "medium",
-        modelId: "test/model",
-        promptPath,
-        thinkingLevel: "high",
-      },
-      { downloadPhoto, model },
+    const model = verdictModel({ match: true, notes: "Looks good" });
+    const evaluator = testEvaluator(
+      model,
+      { downloadPhoto },
+      { ...testSettings(), mediaResolution: "medium", thinkingLevel: "high" },
     );
 
     await expect(
-      evaluator.evaluate({
-        link: "https://t.me/example/50",
-        photos: [firstPhoto, secondPhoto],
-        text: "Flat with photos",
-      }),
+      evaluator.evaluate(post(50, { photos: ["first", "second"], text: "Flat with photos" })),
     ).resolves.toStrictEqual({ match: true, notes: "Looks good" });
 
-    expect(downloadPhoto).toHaveBeenNthCalledWith(1, firstPhoto);
-    expect(downloadPhoto).toHaveBeenNthCalledWith(2, secondPhoto);
+    expect(downloadPhoto).toHaveBeenNthCalledWith(1, "first");
+    expect(downloadPhoto).toHaveBeenNthCalledWith(2, "second");
 
     const [{ prompt }] = model.doGenerateCalls;
     expect(model.doGenerateCalls[0].providerOptions).toStrictEqual({
@@ -451,78 +258,113 @@ describe("evaluator", () => {
       text: expect.stringContaining("Flat with photos") as string,
       type: "text",
     });
-    expect(userContent[1]).toStrictEqual(
+    expect(userContent.slice(1)).toStrictEqual([
       expect.objectContaining({
         data: { data: new Uint8Array([1, 2]), type: "data" },
         mediaType: "image",
-        type: "file",
       }),
-    );
-    expect(userContent[2]).toStrictEqual(
       expect.objectContaining({
         data: { data: new Uint8Array([3, 4]), type: "data" },
         mediaType: "image",
-        type: "file",
       }),
-    );
+    ]);
   });
+});
 
-  it("formats the full cache and reasoning token breakdown", () => {
+describe("evaluation failures", () => {
+  it("retries a persistent model failure and returns one evaluation failure", async () => {
     expect.hasAssertions();
-    expect(
-      describeUsage({
-        inputTokenDetails: {
-          cacheReadTokens: 6,
-          cacheWriteTokens: 1,
-          noCacheTokens: 3,
-        },
-        inputTokens: 10,
-        outputTokenDetails: { reasoningTokens: 4, textTokens: 2 },
-        outputTokens: 6,
-        totalTokens: 16,
-      }),
-    ).toBe("10 in (3 new, 6 cache read, 1 cache write) / 6 out (2 text, 4 reasoning)");
-  });
-
-  it("returns No match without a model call when all photos fail and text is empty", async () => {
-    expect.hasAssertions();
-    const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-    const promptPath = path.join(directory, "prompt.md");
-    const criteriaPath = path.join(directory, "criteria.md");
-    writeFileSync(promptPath, "Prompt");
-    writeFileSync(criteriaPath, "Criteria");
-    const firstPhoto = { __photoRef: true } as PhotoRef;
-    const downloadPhoto = vi.fn<NonNullable<EvaluatorOptions["downloadPhoto"]>>(() =>
-      Promise.reject(new Error("expired file reference")),
-    );
-    const model = modelFor({ match: true, notes: "Should not run" });
-    const evaluator = createEvaluator(
-      { criteriaPath, modelId: "test/model", promptPath },
-      { downloadPhoto, model },
-    );
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {
-      /* Keep test output quiet. */
-    });
-    const log = vi.spyOn(console, "log").mockImplementation(() => {
-      /* Keep test output quiet. */
+    const consoleError = quiet("error");
+    quiet("log");
+    const model = new MockLanguageModelV4({
+      doGenerate: (): Promise<never> => Promise.reject(new Error("gateway failed")),
     });
 
     await expect(
-      evaluator.evaluate({
-        link: "https://t.me/example/51",
-        photos: [firstPhoto],
-        text: "",
-      }),
-    ).resolves.toStrictEqual({ match: false, notes: "No text or photos remain" });
+      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(1)),
+    ).resolves.toStrictEqual({
+      error: "Error: gateway failed",
+      kind: "evaluation-failure",
+    } satisfies EvaluationFailure);
+    expect(model.doGenerateCalls).toHaveLength(3);
+    expect(consoleError).toHaveBeenCalledTimes(3);
+  });
 
+  it("recovers when the next attempt succeeds", async () => {
+    expect.hasAssertions();
+    quiet("error");
+    quiet("log");
+    const model = new MockLanguageModelV4({
+      doGenerate: vi
+        .fn<() => Promise<GenerateResult>>()
+        .mockRejectedValueOnce(new Error("temporary gateway failure"))
+        .mockResolvedValue({
+          content: [{ text: JSON.stringify({ match: true, notes: "Recovered" }), type: "text" }],
+          finishReason: { raw: undefined, unified: "stop" },
+          usage,
+          warnings: [],
+        }),
+    });
+
+    await expect(
+      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(2)),
+    ).resolves.toStrictEqual({ match: true, notes: "Recovered" });
+    expect(model.doGenerateCalls).toHaveLength(2);
+  });
+
+  it.each([
+    ["a run with no output", { content: [], unified: "length" as const }, "evaluation-failure"],
+    [
+      "a run with invalid structured output",
+      { content: [{ text: "not JSON", type: "text" as const }], unified: "stop" as const },
+      "AI_NoObjectGeneratedError",
+    ],
+  ])("counts %s as a failed attempt", async (_case, { content, unified }, expected) => {
+    expect.hasAssertions();
+    quiet("error");
+    quiet("log");
+    const model = new MockLanguageModelV4({
+      doGenerate: { content, finishReason: { raw: undefined, unified }, usage, warnings: [] },
+    });
+
+    const verdict = await testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(3));
+
+    expect(JSON.stringify(verdict)).toContain(expected);
+    expect(model.doGenerateCalls).toHaveLength(3);
+  });
+
+  it("counts a timed-out run as a failed attempt", async () => {
+    expect.hasAssertions();
+    quiet("error");
+    quiet("log");
+    const model = new MockLanguageModelV4({
+      doGenerate: ({ abortSignal }): Promise<never> => rejectWhenAborted(abortSignal),
+    });
+
+    await expect(
+      testEvaluator(model, { retryPolicy: retryPolicy(10) }).evaluate(post(31)),
+    ).resolves.toMatchObject({
+      error: expect.stringMatching(/^timeout:/u) as string,
+      kind: "evaluation-failure",
+    });
+    expect(model.doGenerateCalls).toHaveLength(3);
+  });
+
+  it("returns a prompt or Criteria read failure without an agent run or retry", async () => {
+    expect.hasAssertions();
+    const consoleError = quiet("error");
+    quiet("log");
+    const files = ownerFiles();
+    rmSync(files.criteriaPath);
+    const model = verdictModel({ match: true, notes: "Looks good" });
+
+    await expect(
+      testEvaluator(model, { retryPolicy: retryPolicy() }, testSettings(files)).evaluate(post(4)),
+    ).resolves.toMatchObject({
+      error: expect.stringContaining("Criteria file") as string,
+      kind: "evaluation-failure",
+    });
     expect(model.doGenerateCalls).toHaveLength(0);
-    expect(warn).toHaveBeenCalledWith(
-      "post https://t.me/example/51: skipped photo: expired file reference",
-    );
-    expect(log).toHaveBeenCalledWith(
-      "post https://t.me/example/51: nothing left to evaluate, no model call",
-    );
-    log.mockRestore();
-    warn.mockRestore();
+    expect(consoleError).toHaveBeenCalledTimes(1);
   });
 });

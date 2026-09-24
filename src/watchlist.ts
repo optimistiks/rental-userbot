@@ -1,79 +1,47 @@
-import { readConfiguredTextFile } from "./text-file.js";
-
-/** The channel IDs the bot is watching, as the owner last wrote them. */
-interface Watchlist {
-  channelIds: () => number[];
-}
+import { readTextFile } from "./text-file.js";
 
 const MARKED_CHANNEL_ID = /^-100\d+$/u;
 
-function parseChannelIds(contents: string): number[] {
-  const ids = new Set<number>();
-
-  for (const line of contents.split("\n")) {
-    const id = parseChannelId(line);
-    if (id !== undefined) {
-      ids.add(id);
-    }
-  }
-
-  return [...ids];
-}
-
 /** A line counts only if it is a marked channel ID; anything else is the owner's own note. */
-function parseChannelId(line: string): number | undefined {
-  const [beforeComment = ""] = line.split("#");
-  const candidate = beforeComment.trim();
-  if (!MARKED_CHANNEL_ID.test(candidate)) {
-    return undefined;
-  }
-
-  const id = Number(candidate);
-  return Number.isSafeInteger(id) ? id : undefined;
-}
-
 function readWatchlistFile(channelsPath: string): number[] {
-  return parseChannelIds(readConfiguredTextFile(channelsPath, "Watchlist"));
+  const ids = readTextFile(channelsPath, "Watchlist")
+    .split("\n")
+    .map((line) => line.split("#", 1)[0].trim())
+    .filter((candidate) => MARKED_CHANNEL_ID.test(candidate))
+    .map(Number)
+    .filter((id) => Number.isSafeInteger(id));
+  return [...new Set(ids)];
 }
 
 /* The file is re-read on every call, the way the Zone checker re-reads zone.geojson.
    Watching it for events was considered and rejected: the bot reads a bind mount from
    macOS Docker Desktop, which does not propagate host filesystem events into the
-   container, so every watcher would have to poll a sub-kilobyte file anyway. */
-function createWatchlist(channelsPath: string): Watchlist {
-  let previous: number[] | undefined;
+   container, so every watcher would have to poll a sub-kilobyte file anyway.
+   Total by design: a file that vanishes under a running bot means "watch nothing",
+   never an error reaching the Post path. */
+function watchedChannelIds(channelsPath: string): number[] {
+  try {
+    return readWatchlistFile(channelsPath);
+  } catch {
+    return [];
+  }
+}
 
-  return {
-    channelIds() {
-      // Total by design: a file that vanishes under a running bot means "watch nothing",
-      // Never an error reaching the Post path.
-      let channelIds: number[];
-      try {
-        channelIds = readWatchlistFile(channelsPath);
-      } catch {
-        channelIds = [];
-      }
-
-      if (previous !== undefined) {
-        logChange(previous, channelIds);
-      }
-      previous = channelIds;
-      return channelIds;
-    },
-  };
+function watchingMessage(count: number): string {
+  return `watching ${count} ${count === 1 ? "channel" : "channels"}`;
 }
 
 function watchlistChangeMessage(
   previous: readonly number[],
   current: readonly number[],
 ): string | undefined {
-  const added = difference(current, previous);
-  const removed = difference(previous, current);
+  const added = current.filter((channelId) => !previous.includes(channelId));
+  const removed = previous.filter((channelId) => !current.includes(channelId));
   if (added.length === 0 && removed.length === 0) {
     return undefined;
   }
 
-  const parts = [`watching ${current.length} ${current.length === 1 ? "channel" : "channels"}`];
+  const parts = [watchingMessage(current.length)];
   if (added.length > 0) {
     parts.push(`added ${added.join(", ")}`);
   }
@@ -84,16 +52,4 @@ function watchlistChangeMessage(
   return parts.join("; ");
 }
 
-function logChange(previous: readonly number[], current: readonly number[]): void {
-  const message = watchlistChangeMessage(previous, current);
-  if (message !== undefined) {
-    console.log(`watchlist: ${message}`);
-  }
-}
-
-function difference(channelIds: readonly number[], other: readonly number[]): number[] {
-  const excluded = new Set(other);
-  return channelIds.filter((channelId) => !excluded.has(channelId));
-}
-
-export { type Watchlist, readWatchlistFile, createWatchlist, watchlistChangeMessage };
+export { readWatchlistFile, watchedChannelIds, watchingMessage, watchlistChangeMessage };

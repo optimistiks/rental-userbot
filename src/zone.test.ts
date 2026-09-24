@@ -1,10 +1,11 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { ZoneFeature } from "./zone.js";
 
+import { temporaryDirectory } from "./test-support.js";
 import { createZoneChecker, readZoneFile } from "./zone.js";
 
 const polygon = (
@@ -22,13 +23,8 @@ const polygon = (
   type: "Feature",
 });
 
-function temporaryDirectory(): string {
-  return mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-}
-
 function writeZone(value: unknown): string {
-  const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-  const zonePath = path.join(directory, "zone.geojson");
+  const zonePath = path.join(temporaryDirectory(), "zone.geojson");
   writeFileSync(zonePath, JSON.stringify(value));
   return zonePath;
 }
@@ -61,7 +57,7 @@ describe("readZoneFile", () => {
       type: "FeatureCollection",
     });
 
-    expect(readZoneFile(zoneFile).features).toHaveLength(2);
+    expect(readZoneFile(zoneFile)).toHaveLength(2);
   });
 
   it("names a missing, malformed, or empty Zone file", () => {

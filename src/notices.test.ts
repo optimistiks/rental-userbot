@@ -1,55 +1,13 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { rmSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { createNotices } from "./notices.js";
-
-function ownerFiles(channels = "-1001234567890\n"): {
-  channelsPath: string;
-  criteriaPath: string;
-  promptPath: string;
-  zonePath: string;
-} {
-  const directory = mkdtempSync(path.join(tmpdir(), "rental-userbot-"));
-  const channelsPath = path.join(directory, "channels.txt");
-  const criteriaPath = path.join(directory, "criteria.md");
-  const promptPath = path.join(directory, "prompt.md");
-  const zonePath = path.join(directory, "zone.geojson");
-  writeFileSync(channelsPath, channels);
-  writeFileSync(criteriaPath, "Want a 1+1 in Old Town.\n");
-  writeFileSync(promptPath, "Judge the listing.\n");
-  writeFileSync(zonePath, JSON.stringify(zoneCollection("Old Batumi")));
-  return { channelsPath, criteriaPath, promptPath, zonePath };
-}
-
-function zoneCollection(name: string): unknown {
-  return {
-    features: [
-      {
-        geometry: {
-          coordinates: [
-            [
-              [0, 0],
-              [1, 0],
-              [1, 1],
-              [0, 1],
-              [0, 0],
-            ],
-          ],
-          type: "Polygon",
-        },
-        properties: { name },
-        type: "Feature",
-      },
-    ],
-    type: "FeatureCollection",
-  };
-}
+import { ownerFiles, quiet, zoneCollection } from "./test-support.js";
 
 describe("createNotices", () => {
   it("notices a Watchlist addition after the seed read", () => {
     expect.hasAssertions();
+    const log = quiet("log");
     const files = ownerFiles();
     const notices = createNotices(files);
 
@@ -61,10 +19,14 @@ describe("createNotices", () => {
       canEvaluate: true,
       notice: "🟢 watchlist: watching 2 channels; added -1009876543210",
     });
+    expect(log).toHaveBeenCalledWith(
+      "notice: 🟢 watchlist: watching 2 channels; added -1009876543210",
+    );
   });
 
   it("notices a Criteria edit and ignores a comment-only Watchlist edit", () => {
     expect.hasAssertions();
+    quiet("log");
     const files = ownerFiles();
     const notices = createNotices(files);
     writeFileSync(files.channelsPath, "-1001234567890  # Batumi\n");
@@ -78,6 +40,7 @@ describe("createNotices", () => {
 
   it("notices Prompt and Zone meaning changes in one message", () => {
     expect.hasAssertions();
+    quiet("log");
     const files = ownerFiles();
     const notices = createNotices(files);
     writeFileSync(files.promptPath, "Judge photos first.\n");
@@ -100,6 +63,7 @@ describe("createNotices", () => {
 
   it("warns when Criteria becomes unreadable and does not evaluate until it reads", () => {
     expect.hasAssertions();
+    quiet("log");
     const files = ownerFiles();
     const notices = createNotices(files);
     rmSync(files.criteriaPath);
@@ -120,6 +84,7 @@ describe("createNotices", () => {
 
   it("treats a vanished Watchlist as watching nothing", () => {
     expect.hasAssertions();
+    quiet("log");
     const files = ownerFiles();
     const notices = createNotices(files);
     rmSync(files.channelsPath);

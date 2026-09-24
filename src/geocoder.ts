@@ -2,6 +2,8 @@
 // Token in its query string, so this request stays out of the trace entirely.
 import { suppressTracing } from "@sentry/node";
 
+import type { Settings } from "./config.js";
+
 import { errorMessage } from "./errors.js";
 
 type GeocodePrecision = "building" | "place" | "street" | "area";
@@ -36,32 +38,24 @@ type Fetcher = (input: string | URL, init?: RequestInit) => Promise<Response>;
    match was, not how precise it is. A house number that does not exist comes back as
    matchlevel "street" with matchcode "exact", and a misspelled street comes back HTTP
    200 at matchlevel "city" — the Batumi centroid — rather than as a miss. Only the
-   level says whether a point is worth checking against the Zone. */
-function precisionForMatchLevel(matchLevel: unknown): GeocodePrecision {
-  switch (matchLevel) {
-    case "building": {
-      return "building";
-    }
-    case "venue": {
-      return "place";
-    }
-    case "street": {
-      return "street";
-    }
-    default: {
-      return "area";
-    }
-  }
-}
+   level says whether a point is worth checking against the Zone. Anything not listed
+   here is an "area". */
+const PRECISION_BY_MATCH_LEVEL = new Map<unknown, GeocodePrecision>([
+  ["building", "building"],
+  ["venue", "place"],
+  ["street", "street"],
+]);
 
 function createGeocoder(
-  settings: { url: string; token: string },
+  settings: Pick<Settings, "geocoderUrl" | "locationIqToken">,
   fetcher: Fetcher = fetch,
 ): Geocoder {
+  const token = settings.locationIqToken;
+
   return {
     async geocode(query, signal) {
-      const url = new URL(settings.url);
-      url.searchParams.set("key", settings.token);
+      const url = new URL(settings.geocoderUrl);
+      url.searchParams.set("key", token);
       url.searchParams.set("q", `${query.trim()}, Batumi`);
       url.searchParams.set("countrycodes", "ge");
       url.searchParams.set("format", "json");
@@ -72,9 +66,7 @@ function createGeocoder(
       try {
         response = await suppressTracing(() => fetcher(url, { signal }));
       } catch (error) {
-        throw new GeocoderError(
-          `LocationIQ request failed: ${redact(errorMessage(error), settings.token)}`,
-        );
+        throw new GeocoderError(`LocationIQ request failed: ${redact(errorMessage(error), token)}`);
       }
 
       if (response.status === 404) {
@@ -83,7 +75,7 @@ function createGeocoder(
 
       if (!response.ok) {
         throw new GeocoderError(
-          `LocationIQ request failed (${response.status}): ${await responseError(response, settings.token)}`,
+          `LocationIQ request failed (${response.status}): ${await responseError(response, token)}`,
         );
       }
 
@@ -97,9 +89,11 @@ function createGeocoder(
   };
 }
 
+/* A named class, not a bare Error: the original error is deliberately not kept as the
+   cause, because its message can carry the token. */
 class GeocoderError extends Error {
-  public constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
+  public constructor(message: string) {
+    super(message);
     this.name = "GeocoderError";
   }
 }
@@ -120,7 +114,7 @@ function toGeocodeResult(value: unknown): GeocodeResult {
     label,
     lat,
     lon,
-    precision: precisionForMatchLevel(result.matchquality?.matchlevel),
+    precision: PRECISION_BY_MATCH_LEVEL.get(result.matchquality?.matchlevel) ?? "area",
   };
 }
 
@@ -135,16 +129,7 @@ async function responseError(response: Response, token: string): Promise<string>
 }
 
 function redact(message: string, token: string): string {
-  return token === "" ? message : message.split(token).join("[redacted]");
+  return message.replaceAll(token, "[redacted]");
 }
 
-export {
-  type GeocodePrecision,
-  type GeocodeResult,
-  type GeocodeResponse,
-  type Geocoder,
-  type Fetcher,
-  precisionForMatchLevel,
-  createGeocoder,
-  GeocoderError,
-};
+export { type GeocodeResponse, type Fetcher, createGeocoder };

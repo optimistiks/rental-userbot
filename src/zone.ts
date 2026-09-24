@@ -1,7 +1,7 @@
 import { booleanPointInPolygon } from "@turf/boolean-point-in-polygon";
 import { readFileSync } from "node:fs";
 
-import { errorMessage } from "./errors.js";
+import { errorMessage, isRecord } from "./errors.js";
 
 interface ZoneGeometry {
   type: "Polygon" | "MultiPolygon";
@@ -14,17 +14,12 @@ interface ZoneFeature {
   geometry: ZoneGeometry;
 }
 
-interface ZoneFile {
-  type: "FeatureCollection";
-  features: ZoneFeature[];
-}
-
 interface ZoneResult {
   inside: boolean;
   zone: string | null;
 }
 
-/** A location on the map. GeoJSON's own [lon, lat] order is confined to toPosition. */
+/** A location on the map. GeoJSON's own [lon, lat] order is confined to inZone. */
 interface Point {
   lat: number;
   lon: number;
@@ -34,7 +29,7 @@ interface ZoneChecker {
   inZone: (point: Point) => ZoneResult;
 }
 
-function readZoneFile(zonePath: string): ZoneFile {
+function readZoneFile(zonePath: string): ZoneFeature[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(zonePath, "utf8"));
@@ -51,103 +46,59 @@ function readZoneFile(zonePath: string): ZoneFile {
     );
   }
 
-  return { features, type: "FeatureCollection" };
+  return features;
 }
 
 function createZoneChecker(zonePath: string): ZoneChecker {
   return {
     inZone(point) {
-      const zone = readZoneFile(zonePath);
+      const feature = readZoneFile(zonePath).find((candidate) =>
+        booleanPointInPolygon(
+          [point.lon, point.lat],
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+          candidate as Parameters<typeof booleanPointInPolygon>[1],
+        ),
+      );
 
-      for (const feature of zone.features) {
-        if (
-          booleanPointInPolygon(
-            toPosition(point),
-            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-            feature as Parameters<typeof booleanPointInPolygon>[1],
-          )
-        ) {
-          return {
-            inside: true,
-            zone: featureName(feature),
-          };
-        }
-      }
-
-      return { inside: false, zone: null };
+      return feature === undefined
+        ? { inside: false, zone: null }
+        : { inside: true, zone: featureName(feature) };
     },
   };
 }
 
+/** Only Polygon and MultiPolygon features are checked; any other feature is ignored. */
 function zoneFeatures(value: unknown, zonePath: string): ZoneFeature[] {
-  if (!isRecord(value)) {
-    return [];
-  }
+  const candidates: unknown[] =
+    isRecord(value) && value.type === "FeatureCollection" && Array.isArray(value.features)
+      ? value.features
+      : [value];
 
-  if (value.type === "FeatureCollection" && Array.isArray(value.features)) {
-    const features: ZoneFeature[] = [];
-    for (const feature of value.features) {
-      if (!isGeoJsonFeature(feature)) {
-        throw new Error(
-          `Zone file "${zonePath}" is not valid GeoJSON: contains an invalid feature`,
-        );
-      }
-      if (isZoneFeature(feature)) {
-        features.push(feature);
-      }
+  return candidates.filter((candidate): candidate is ZoneFeature => {
+    if (!isRecord(candidate) || !isRecord(candidate.geometry)) {
+      return false;
     }
-    return features;
-  }
-
-  if (isZoneFeature(value)) {
-    return [value];
-  }
-
-  return [];
-}
-
-function isZoneFeature(value: unknown): value is ZoneFeature {
-  if (!isRecord(value) || value.type !== "Feature" || !isZoneGeometry(value.geometry)) {
-    return false;
-  }
-
-  return value.properties === null || isRecord(value.properties);
-}
-
-function isGeoJsonFeature(value: unknown): boolean {
-  if (!isRecord(value) || value.type !== "Feature") {
-    return false;
-  }
-
-  if (value.properties !== null && !isRecord(value.properties)) {
-    return false;
-  }
-
-  if (value.geometry === null) {
+    const { type } = candidate.geometry;
+    if (type !== "Polygon" && type !== "MultiPolygon") {
+      return false;
+    }
+    if (!isZoneFeature(candidate)) {
+      throw new Error(`Zone file "${zonePath}" is not valid GeoJSON: contains an invalid feature`);
+    }
     return true;
-  }
-
-  return isGeoJsonGeometry(value.geometry);
+  });
 }
 
-function isGeoJsonGeometry(geometry: unknown): boolean {
-  if (!isRecord(geometry) || typeof geometry.type !== "string") {
-    return false;
-  }
-
-  if (geometry.type === "Polygon" || geometry.type === "MultiPolygon") {
-    return isZoneGeometry(geometry);
-  }
-
-  if (geometry.type === "GeometryCollection") {
-    return Array.isArray(geometry.geometries);
-  }
-
-  return Array.isArray(geometry.coordinates);
+function isZoneFeature(value: Record<string, unknown>): boolean {
+  return (
+    value.type === "Feature" &&
+    (value.properties === null || isRecord(value.properties)) &&
+    isZoneGeometry(value.geometry)
+  );
 }
 
-function isZoneGeometry(value: unknown): value is ZoneGeometry {
-  if (!isRecord(value) || !Array.isArray(value.coordinates)) {
+function isZoneGeometry(value: unknown): boolean {
+  if (!isRecord(value)) {
     return false;
   }
 
@@ -155,15 +106,11 @@ function isZoneGeometry(value: unknown): value is ZoneGeometry {
     return isPolygonCoordinates(value.coordinates);
   }
 
-  if (value.type === "MultiPolygon") {
-    return (
-      Array.isArray(value.coordinates) &&
-      value.coordinates.length > 0 &&
-      value.coordinates.every(isPolygonCoordinates)
-    );
-  }
-
-  return false;
+  return (
+    Array.isArray(value.coordinates) &&
+    value.coordinates.length > 0 &&
+    value.coordinates.every(isPolygonCoordinates)
+  );
 }
 
 function isPolygonCoordinates(value: unknown): boolean {
@@ -179,7 +126,7 @@ function isLinearRing(value: unknown): boolean {
   const [first] = ring;
   const last = ring.at(-1);
   return (
-    value.every((position) => isPosition(position)) &&
+    ring.every((position) => isPosition(position)) &&
     Array.isArray(first) &&
     Array.isArray(last) &&
     first[0] === last[0] &&
@@ -203,20 +150,12 @@ function featureName(feature: ZoneFeature): string | null {
   return typeof name === "string" ? name : null;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function toPosition(point: Point): [number, number] {
-  return [point.lon, point.lat];
-}
-
 export {
   type ZoneFeature,
-  type ZoneFile,
   type ZoneResult,
   type Point,
   type ZoneChecker,
   readZoneFile,
   createZoneChecker,
+  featureName,
 };

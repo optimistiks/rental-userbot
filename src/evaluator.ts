@@ -1,18 +1,18 @@
 import type { LanguageModel } from "ai";
 
 import { Output, generateText, isStepCount, tool } from "ai";
+import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 
-import type { MediaResolution, ThinkingLevel } from "./config.js";
+import type { Level, Settings } from "./config.js";
 import type { GeocodeResponse } from "./geocoder.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef, Post } from "./telegram.js";
 import type { Point, ZoneResult } from "./zone.js";
 
-import { MEDIA_RESOLUTION, THINKING_LEVEL } from "./config.js";
-import { errorMessage, errorName } from "./errors.js";
+import { errorMessage, errorName, isRecord } from "./errors.js";
 import { createSentryReporter } from "./sentry.js";
-import { readCriteriaFile, readPromptFile } from "./text-file.js";
+import { readTextFile } from "./text-file.js";
 
 const verdictSchema = z.object({
   match: z.boolean(),
@@ -26,19 +26,16 @@ interface EvaluationFailure {
 
 type Verdict = z.infer<typeof verdictSchema> | EvaluationFailure;
 
-interface EvaluatorSettings {
-  modelId: string;
-  promptPath: string;
-  criteriaPath: string;
-  mediaResolution?: MediaResolution;
-  thinkingLevel?: ThinkingLevel;
-}
+type EvaluatorSettings = Pick<
+  Settings,
+  "modelId" | "promptPath" | "criteriaPath" | "mediaResolution" | "thinkingLevel"
+>;
 
 interface EvaluatorOptions {
   model?: LanguageModel;
-  downloadPhoto?: (ref: PhotoRef) => Promise<Uint8Array>;
+  downloadPhoto: (ref: PhotoRef) => Promise<Uint8Array>;
   retryPolicy?: RetryPolicy;
-  tools?: EvaluatorToolSet;
+  tools: EvaluatorToolSet;
   errorReporter?: ErrorReporter;
 }
 
@@ -47,10 +44,16 @@ interface EvaluatorToolImplementations {
   inZone: (point: Point) => ZoneResult;
 }
 
-const TOOL_TIMEOUT_MS = 10_000;
+interface LocatedCandidate {
+  inside: boolean;
+  label: string;
+  lat: number;
+  lon: number;
+  precision: string;
+  zone: string | null;
+}
 
-/** A Post with post text and at least three photos, assembled for evaluation. */
-type Listing = Pick<Post, "text"> & Partial<Pick<Post, "chatId" | "link" | "photos">>;
+const TOOL_TIMEOUT_MS = 10_000;
 
 interface EvaluationContext {
   /** Listings still waiting in the pipeline queue behind this one. */
@@ -60,7 +63,7 @@ interface EvaluationContext {
 }
 
 interface Evaluator {
-  evaluate: (listing: Listing, context?: EvaluationContext) => Promise<Verdict>;
+  evaluate: (listing: Post, context?: EvaluationContext) => Promise<Verdict>;
 }
 
 interface RetryPolicy {
@@ -77,24 +80,16 @@ const DEFAULT_RETRY_POLICY: RetryPolicy = {
   timeoutMs: 180_000,
 };
 
-function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions = {}): Evaluator {
+function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions): Evaluator {
   const model = options.model ?? settings.modelId;
-  const { downloadPhoto } = options;
+  const { downloadPhoto, tools } = options;
   const retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY;
-  const { tools } = options;
   const errorReporter = options.errorReporter ?? createSentryReporter();
-  const mediaResolution = settings.mediaResolution ?? MEDIA_RESOLUTION;
-  const thinkingLevel = settings.thinkingLevel ?? THINKING_LEVEL;
 
   return {
     async evaluate(post, context) {
-      const link = post.link ?? "<no link>";
-      const photoData = await downloadPhotos(post.photos ?? [], link, downloadPhoto);
-
-      if (post.text.trim() === "" && photoData.length === 0) {
-        console.log(`post ${link}: nothing left to evaluate, no model call`);
-        return { match: false, notes: "No text or photos remain" };
-      }
+      const { link } = post;
+      const photoData = await downloadPhotos(post.photos, link, downloadPhoto);
 
       const content: (
         | { type: "text"; text: string }
@@ -125,8 +120,8 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
         let prompt: string;
         let criteria: string;
         try {
-          prompt = readPromptFile(settings.promptPath);
-          criteria = readCriteriaFile(settings.criteriaPath);
+          prompt = readTextFile(settings.promptPath, "Prompt");
+          criteria = readTextFile(settings.criteriaPath, "Criteria");
         } catch (error) {
           console.error(`post ${link}: evaluation setup failed`, error);
           errorReporter.captureException(error, { phase: "evaluation", postLink: link });
@@ -140,7 +135,7 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
           const result = await errorReporter.run(link, () =>
             generateText({
               model,
-              ...(tools === undefined ? {} : { tools }),
+              tools,
               ...(errorReporter.enabled
                 ? {
                     telemetry: {
@@ -161,12 +156,14 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
               ],
               onStepEnd: (step) => {
                 logStep(link, step);
-                logStepUsage(link, step);
+                console.log(
+                  `post ${link}: step ${step.stepNumber + 1} usage — ${describeUsage(step.usage)}`,
+                );
               },
               onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
                 const outcome =
                   toolOutput.type === "tool-result"
-                    ? describeToolResult(toolCall.toolName, toolOutput.output)
+                    ? describeLocated(toolOutput.output)
                     : `failed: ${errorMessage(toolOutput.error)}`;
                 console.log(
                   `post ${link}: ${describeToolCall(toolCall.toolName, toolCall.input)} → ${outcome} in ${Math.round(toolExecutionMs)}ms`,
@@ -177,15 +174,12 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
                 stepNumber === retryPolicy.maxSteps - 1 ? { toolChoice: "none" } : {},
               providerOptions: {
                 google: {
-                  mediaResolution: googleMediaResolution(mediaResolution),
-                  thinkingConfig: { includeThoughts: true, thinkingLevel },
+                  mediaResolution: GOOGLE_MEDIA_RESOLUTIONS[settings.mediaResolution],
+                  thinkingConfig: { includeThoughts: true, thinkingLevel: settings.thinkingLevel },
                 },
               },
               stopWhen: isStepCount(retryPolicy.maxSteps),
-              timeout:
-                tools === undefined
-                  ? retryPolicy.timeoutMs
-                  : { toolMs: TOOL_TIMEOUT_MS, totalMs: retryPolicy.timeoutMs },
+              timeout: { toolMs: TOOL_TIMEOUT_MS, totalMs: retryPolicy.timeoutMs },
             }),
           );
 
@@ -202,7 +196,7 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions 
           }
 
           // oxlint-disable-next-line no-await-in-loop
-          await wait(retryPolicy.backoffsMs[attempt] ?? 0);
+          await sleep(retryPolicy.backoffsMs[attempt] ?? 0);
         }
       }
 
@@ -219,7 +213,7 @@ function createEvaluatorTools(implementations: EvaluatorToolImplementations) {
     locateInZone: tool({
       description:
         "Search for an apartment or landmark in Batumi and check every candidate against the configured rental Zone. Use a cleaned address or place name. Returns up to three candidates with coordinates, precision, and Zone status so you can resolve ambiguous locations.",
-      execute: async ({ query }, { abortSignal }) => {
+      execute: async ({ query }, { abortSignal }): Promise<{ results: LocatedCandidate[] }> => {
         const response = await implementations.geocode(query, abortSignal);
         return {
           results: response.results.map((result) => {
@@ -242,67 +236,40 @@ function createEvaluatorTools(implementations: EvaluatorToolImplementations) {
 
 type EvaluatorToolSet = ReturnType<typeof createEvaluatorTools>;
 
-function formatEvaluationError(error: unknown): string {
+function evaluationFailure(error: unknown): EvaluationFailure {
   const label = hasTimeoutCause(error) ? "timeout" : errorName(error);
-  const message = errorMessage(error)
+  const message = firstLine(
     /* Matches ANSI escape sequences, which are control characters by definition. */
     // oxlint-disable-next-line no-control-regex
-    .replaceAll(/\u001B\[[0-?]*[ -/]*[@-~]/gu, "")
-    .split(/\r\n|\n|\r/u, 1)[0]
-    .slice(0, 200);
-  return `${label}: ${message}`;
-}
-
-function evaluationFailure(error: unknown): EvaluationFailure {
-  return {
-    error: formatEvaluationError(error),
-    kind: "evaluation-failure",
-  };
+    errorMessage(error).replaceAll(/\u001B\[[0-?]*[ -/]*[@-~]/gu, ""),
+  ).slice(0, 200);
+  return { error: `${label}: ${message}`, kind: "evaluation-failure" };
 }
 
 function hasTimeoutCause(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
 
-  while (current !== null && current !== undefined && !seen.has(current)) {
+  while (isRecord(current) && !seen.has(current)) {
     seen.add(current);
     if (errorName(current) === "TimeoutError") {
       return true;
     }
-
-    if (typeof current !== "object" || !("cause" in current)) {
-      return false;
-    }
-
-    current = (current as { cause?: unknown }).cause;
+    current = current.cause;
   }
 
   return false;
 }
 
-async function wait(milliseconds: number): Promise<void> {
-  if (milliseconds <= 0) {
-    return;
-  }
-
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
 async function downloadPhotos(
   photoRefs: readonly PhotoRef[],
   link: string,
-  downloadPhoto: ((ref: PhotoRef) => Promise<Uint8Array>) | undefined,
+  downloadPhoto: (ref: PhotoRef) => Promise<Uint8Array>,
 ): Promise<Uint8Array[]> {
   const photos: Uint8Array[] = [];
 
   for (const photoRef of photoRefs) {
     try {
-      if (downloadPhoto === undefined) {
-        throw new Error("photo downloader is not configured");
-      }
-
       /* Photos download one at a time to stay under Telegram's rate limits. */
       // oxlint-disable-next-line no-await-in-loop
       photos.push(await downloadPhoto(photoRef));
@@ -314,25 +281,19 @@ async function downloadPhotos(
   return photos;
 }
 
-const MAX_TEXT_PREVIEW = 80;
-const MAX_THINKING_PREVIEW = 300;
 const GOOGLE_MEDIA_RESOLUTIONS = {
   high: "MEDIA_RESOLUTION_HIGH",
   low: "MEDIA_RESOLUTION_LOW",
   medium: "MEDIA_RESOLUTION_MEDIUM",
-} as const satisfies Record<MediaResolution, string>;
-
-function googleMediaResolution(
-  resolution: MediaResolution,
-): "MEDIA_RESOLUTION_LOW" | "MEDIA_RESOLUTION_MEDIUM" | "MEDIA_RESOLUTION_HIGH" {
-  return GOOGLE_MEDIA_RESOLUTIONS[resolution];
-}
+} as const satisfies Record<Level, string>;
 
 /** One readable line per step: what the agent was thinking, if it said. */
 function logStep(link: string, step: EvaluationStep): void {
   for (const part of step.content) {
     if (part.type === "reasoning" && part.text.trim() !== "") {
-      console.log(`post ${link}: thinking — ${previewThinking(part.text, MAX_THINKING_PREVIEW)}`);
+      console.log(
+        `post ${link}: thinking — ${truncate(part.text.trim().replaceAll(/\s+/gu, " "), 300)}`,
+      );
     }
 
     if (part.type === "tool-error") {
@@ -343,14 +304,10 @@ function logStep(link: string, step: EvaluationStep): void {
   }
 }
 
-function logStepUsage(link: string, step: EvaluationStep): void {
-  console.log(`post ${link}: step ${step.stepNumber + 1} usage — ${describeUsage(step.usage)}`);
-}
-
 /** Closes out a run: how long it took, how much it cost. */
 function logRunSummary(
   link: string,
-  result: { steps: readonly EvaluationStep[]; usage: EvaluationStep["usage"] },
+  result: { steps: readonly unknown[]; usage: EvaluationStep["usage"] },
   elapsedMs: number,
 ): void {
   console.log(
@@ -383,104 +340,63 @@ function describeBacklog(context: EvaluationContext | undefined): string {
   if (context === undefined) {
     return "";
   }
-  return ` [${context.waiting} waiting, waited ${formatWait(context.waitedMs)}]`;
-}
-
-function formatWait(ms: number): string {
-  const seconds = Math.round(ms / 1000);
+  const seconds = Math.round(context.waitedMs / 1000);
   const minutes = Math.floor(seconds / 60);
-  return minutes === 0 ? `${seconds}s` : `${minutes}m${seconds % 60}s`;
+  const waited = minutes === 0 ? `${seconds}s` : `${minutes}m${seconds % 60}s`;
+  return ` [${context.waiting} waiting, waited ${waited}]`;
 }
 
-function describeListing(listing: Listing, photoCount: number): string {
-  const parts = [];
-  if (listing.chatId !== undefined) {
-    parts.push(`channel ${listing.chatId}`);
-  }
-  parts.push(`${photoCount} photo${photoCount === 1 ? "" : "s"}`);
+function describeListing(listing: Post, photoCount: number): string {
+  const parts = [`channel ${listing.chatId}`, `${photoCount} photo${photoCount === 1 ? "" : "s"}`];
   const text = listing.text.trim();
   if (text !== "") {
-    parts.push(`"${firstLine(text, MAX_TEXT_PREVIEW)}"`);
+    parts.push(`"${truncate(firstLine(text), 80)}"`);
   }
   return parts.join(", ");
 }
 
 function describeToolCall(toolName: string, input: unknown): string {
-  if (toolName === "locateInZone" && isRecord(input) && typeof input.query === "string") {
-    return `locateInZone "${input.query}"`;
+  return isRecord(input) && typeof input.query === "string"
+    ? `${toolName} "${input.query}"`
+    : `${toolName} ${JSON.stringify(input)}`;
+}
+
+/** Describes a locateInZone result: it is the only tool, but the SDK does not carry its output type this far. */
+function describeLocated(output: unknown): string {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const { results } = output as { results: LocatedCandidate[] };
+  if (results.length === 0) {
+    return "nothing found";
   }
 
-  return `${toolName} ${JSON.stringify(input)}`;
+  return results
+    .map((result) => {
+      const zone = result.inside ? `inside ${result.zone ?? "the Zone"}` : "outside";
+      return `${result.precision} "${result.label}" (${result.lat.toFixed(4)}, ${result.lon.toFixed(4)}) ${zone}`;
+    })
+    .join("; ");
 }
 
-function describeToolResult(toolName: string, output: unknown): string {
-  if (!isRecord(output)) {
-    return JSON.stringify(output);
-  }
-
-  if (toolName === "locateInZone") {
-    const results: unknown[] = Array.isArray(output.results) ? output.results : [];
-    if (results.length === 0) {
-      return "nothing found";
-    }
-
-    return results.map((result) => describeLocatedCandidate(result)).join("; ");
-  }
-
-  return JSON.stringify(output);
+function firstLine(text: string): string {
+  return text.split(/\r\n|\n|\r/u, 1)[0];
 }
 
-function describeLocatedCandidate(value: unknown): string {
-  if (!isRecord(value)) {
-    return JSON.stringify(value);
-  }
-
-  const location = `${String(value.precision)} "${String(value.label)}" (${formatCoordinate(value.lat)}, ${formatCoordinate(value.lon)})`;
-  const zone =
-    value.inside === true
-      ? `inside ${typeof value.zone === "string" ? value.zone : "the Zone"}`
-      : "outside";
-  return `${location} ${zone}`;
-}
-
-function formatCoordinate(value: unknown): string {
-  return typeof value === "number" ? value.toFixed(4) : String(value);
-}
-
-function firstLine(text: string, maxLength: number): string {
-  const line = text.trim().split(/\r\n|\n|\r/u, 1)[0] ?? "";
-  return line.length > maxLength ? `${line.slice(0, maxLength)}…` : line;
-}
-
-function previewThinking(text: string, maxLength: number): string {
-  const collapsed = text.trim().replaceAll(/\s+/gu, " ");
-  return collapsed.length > maxLength ? `${collapsed.slice(0, maxLength)}…` : collapsed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+function truncate(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 }
 
 /** The step the SDK hands to onStepEnd, so this never drifts from the installed ai version. */
 type EvaluationStep = Parameters<NonNullable<Parameters<typeof generateText>[0]["onStepEnd"]>>[0];
 
 export {
-  verdictSchema,
   type EvaluationContext,
   type EvaluationFailure,
   type Verdict,
-  type EvaluatorSettings,
   type EvaluatorOptions,
   type EvaluatorToolImplementations,
-  TOOL_TIMEOUT_MS,
-  type Listing,
   type Evaluator,
   type RetryPolicy,
-  DEFAULT_RETRY_POLICY,
   createEvaluator,
   createEvaluatorTools,
-  googleMediaResolution,
-  describeUsage,
-  formatEvaluationError,
   evaluationFailure,
 };
