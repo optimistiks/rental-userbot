@@ -5,15 +5,16 @@ import type { Evaluator, Verdict } from "./evaluator.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef, Telegram } from "./telegram.js";
 
-import { createNotices } from "./notices.js";
+import { openOwnerFiles } from "./owner-files.js";
 import { createPostPipeline } from "./pipeline.js";
 import {
   memoryStore,
-  ownerFiles,
   post,
   quiet,
+  readableOwnerFiles,
   testEvaluator,
   verdictModel,
+  writeOwnerFiles,
 } from "./test-support.js";
 
 /** A stub Evaluator that returns `verdict`; tests using it exercise the pipeline alone. */
@@ -92,7 +93,12 @@ describe("post pipeline", () => {
       const dedupeStore = memoryStore();
       const evaluator = stubEvaluator();
       const telegram = telegramSpy();
-      const pipeline = createPostPipeline({ dedupeStore, evaluator, telegram });
+      const pipeline = createPostPipeline({
+        dedupeStore,
+        evaluator,
+        ownerFiles: readableOwnerFiles(),
+        telegram,
+      });
 
       await pipeline.process(post(80, { photos, text }));
 
@@ -113,7 +119,13 @@ describe("post pipeline", () => {
       evaluate: vi.fn<Evaluator["evaluate"]>(() => Promise.reject(new Error("evaluator exploded"))),
     };
     const telegram = telegramSpy();
-    const pipeline = createPostPipeline({ dedupeStore, errorReporter, evaluator, telegram });
+    const pipeline = createPostPipeline({
+      dedupeStore,
+      errorReporter,
+      evaluator,
+      ownerFiles: readableOwnerFiles(),
+      telegram,
+    });
 
     await pipeline.process(post(77));
 
@@ -136,6 +148,7 @@ describe("post pipeline", () => {
       dedupeStore: memoryStore(),
       errorReporter,
       evaluator: stubEvaluator(),
+      ownerFiles: readableOwnerFiles(),
       telegram: failingTelegram(),
     });
 
@@ -158,6 +171,7 @@ describe("post pipeline", () => {
     const pipeline = createPostPipeline({
       dedupeStore: memoryStore(),
       evaluator: testEvaluator(model),
+      ownerFiles: readableOwnerFiles(),
       telegram,
     });
 
@@ -184,6 +198,7 @@ describe("post pipeline", () => {
     const pipeline = createPostPipeline({
       dedupeStore: memoryStore(),
       evaluator: testEvaluator(model, { downloadPhoto }),
+      ownerFiles: readableOwnerFiles(),
       telegram,
     });
 
@@ -209,6 +224,7 @@ describe("post pipeline", () => {
       evaluator: testEvaluator(model, {
         downloadPhoto: () => Promise.reject(new Error("expired file reference")),
       }),
+      ownerFiles: readableOwnerFiles(),
       telegram,
     });
 
@@ -228,6 +244,7 @@ describe("post pipeline", () => {
       concurrency: 2,
       dedupeStore,
       evaluator,
+      ownerFiles: readableOwnerFiles(),
       telegram: telegramSpy(),
     });
     const processed = [11, 12, 13, 14].map((id) => pipeline.process(post(id)));
@@ -260,7 +277,13 @@ describe("post pipeline", () => {
     const dedupeStore = memoryStore();
     const { evaluator, release, started } = blockingEvaluator();
     const telegram = telegramSpy();
-    const pipeline = createPostPipeline({ concurrency: 2, dedupeStore, evaluator, telegram });
+    const pipeline = createPostPipeline({
+      concurrency: 2,
+      dedupeStore,
+      evaluator,
+      ownerFiles: readableOwnerFiles(),
+      telegram,
+    });
     const older = pipeline.process(post(21));
     const newer = pipeline.process(post(22));
     await vi.waitFor(() => {
@@ -284,6 +307,7 @@ describe("post pipeline", () => {
       concurrency: 2,
       dedupeStore: memoryStore(),
       evaluator,
+      ownerFiles: readableOwnerFiles(),
       telegram: telegramSpy(),
     });
     const processed = [31, 31, 32, 33, 33].map((id) => pipeline.process(post(id)));
@@ -311,10 +335,18 @@ describe("post pipeline", () => {
     const secondEvaluator = stubEvaluator({ match: false, notes: "No match" });
     const telegram = telegramSpy();
 
-    await createPostPipeline({ dedupeStore, evaluator: firstEvaluator, telegram }).process(post(8));
-    await createPostPipeline({ dedupeStore, evaluator: secondEvaluator, telegram }).process(
-      post(8),
-    );
+    await createPostPipeline({
+      dedupeStore,
+      evaluator: firstEvaluator,
+      ownerFiles: readableOwnerFiles(),
+      telegram,
+    }).process(post(8));
+    await createPostPipeline({
+      dedupeStore,
+      evaluator: secondEvaluator,
+      ownerFiles: readableOwnerFiles(),
+      telegram,
+    }).process(post(8));
 
     expect(firstEvaluator.evaluate).toHaveBeenCalledTimes(1);
     expect(secondEvaluator.evaluate).not.toHaveBeenCalled();
@@ -326,7 +358,12 @@ describe("post pipeline", () => {
     quiet("log");
     const evaluator = stubEvaluator();
     const telegram = failingTelegram();
-    const pipeline = createPostPipeline({ dedupeStore: memoryStore(), evaluator, telegram });
+    const pipeline = createPostPipeline({
+      dedupeStore: memoryStore(),
+      evaluator,
+      ownerFiles: readableOwnerFiles(),
+      telegram,
+    });
 
     await expect(pipeline.process(post(9))).resolves.toBeUndefined();
     await pipeline.process(post(9));
@@ -338,12 +375,12 @@ describe("post pipeline", () => {
   it("does not evaluate a Listing while Criteria is unreadable", async () => {
     expect.hasAssertions();
     quiet("log");
-    const files = ownerFiles();
-    const notices = createNotices(files);
+    const files = writeOwnerFiles();
+    const ownerFiles = openOwnerFiles(files);
     const dedupeStore = memoryStore();
     const evaluator = stubEvaluator();
     const telegram = telegramSpy();
-    const pipeline = createPostPipeline({ dedupeStore, evaluator, notices, telegram });
+    const pipeline = createPostPipeline({ dedupeStore, evaluator, ownerFiles, telegram });
     rmSync(files.criteriaPath);
 
     await pipeline.process(post(41));
@@ -357,13 +394,13 @@ describe("post pipeline", () => {
     expect.hasAssertions();
     quiet("error");
     quiet("log");
-    const files = ownerFiles();
-    const notices = createNotices(files);
+    const files = writeOwnerFiles();
+    const ownerFiles = openOwnerFiles(files);
     const dedupeStore = memoryStore();
     const evaluator = stubEvaluator();
     const telegram = telegramSpy();
     telegram.sendToMe.mockRejectedValueOnce(new Error("Saved Messages unavailable"));
-    const pipeline = createPostPipeline({ dedupeStore, evaluator, notices, telegram });
+    const pipeline = createPostPipeline({ dedupeStore, evaluator, ownerFiles, telegram });
     writeFileSync(files.criteriaPath, "Want a quieter street.\n");
 
     await pipeline.process(post(42));

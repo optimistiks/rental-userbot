@@ -1,30 +1,14 @@
-import { readTextFile } from "./text-file.js";
-
 const MARKED_CHANNEL_ID = /^-100\d+$/u;
 
 /** A line counts only if it is a marked channel ID; anything else is the owner's own note. */
-function readWatchlistFile(channelsPath: string): number[] {
-  const ids = readTextFile(channelsPath, "Watchlist")
+function parseWatchlist(text: string): number[] {
+  const ids = text
     .split("\n")
     .map((line) => line.split("#", 1)[0].trim())
     .filter((candidate) => MARKED_CHANNEL_ID.test(candidate))
     .map(Number)
     .filter((id) => Number.isSafeInteger(id));
   return [...new Set(ids)];
-}
-
-/* The file is re-read on every call, the way the Zone checker re-reads zone.geojson.
-   Watching it for events was considered and rejected: the bot reads a bind mount from
-   macOS Docker Desktop, which does not propagate host filesystem events into the
-   container, so every watcher would have to poll a sub-kilobyte file anyway.
-   Total by design: a file that vanishes under a running bot means "watch nothing",
-   never an error reaching the Post path. */
-function watchedChannelIds(channelsPath: string): number[] {
-  try {
-    return readWatchlistFile(channelsPath);
-  } catch {
-    return [];
-  }
 }
 
 function watchingMessage(count: number): string {
@@ -52,4 +36,4 @@ function watchlistChangeMessage(
   return parts.join("; ");
 }
 
-export { readWatchlistFile, watchedChannelIds, watchingMessage, watchlistChangeMessage };
+export { parseWatchlist, watchingMessage, watchlistChangeMessage };

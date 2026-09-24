@@ -1,5 +1,4 @@
 import { booleanPointInPolygon } from "@turf/boolean-point-in-polygon";
-import { readFileSync } from "node:fs";
 
 import { errorMessage, isRecord } from "./errors.js";
 
@@ -25,50 +24,42 @@ interface Point {
   lon: number;
 }
 
-interface ZoneChecker {
-  inZone: (point: Point) => ZoneResult;
-}
+/** The owner's outline: at least one Polygon or MultiPolygon feature. */
+type Zone = readonly ZoneFeature[];
 
-function readZoneFile(zonePath: string): ZoneFeature[] {
+/** Errors read as the rest of a sentence that starts with the file's name. */
+function parseZone(text: string): Zone {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(zonePath, "utf8"));
+    parsed = JSON.parse(text);
   } catch (error) {
-    throw new Error(`Zone file "${zonePath}" is not valid GeoJSON: ${errorMessage(error)}`, {
-      cause: error,
-    });
+    throw new Error(`is not valid GeoJSON: ${errorMessage(error)}`, { cause: error });
   }
 
-  const features = zoneFeatures(parsed, zonePath);
+  const features = zoneFeatures(parsed);
   if (features.length === 0) {
-    throw new Error(
-      `Zone file "${zonePath}" must contain at least one Polygon or MultiPolygon feature`,
-    );
+    throw new Error("must contain at least one Polygon or MultiPolygon feature");
   }
 
   return features;
 }
 
-function createZoneChecker(zonePath: string): ZoneChecker {
-  return {
-    inZone(point) {
-      const feature = readZoneFile(zonePath).find((candidate) =>
-        booleanPointInPolygon(
-          [point.lon, point.lat],
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-          candidate as Parameters<typeof booleanPointInPolygon>[1],
-        ),
-      );
+function inZone(zone: Zone, point: Point): ZoneResult {
+  const feature = zone.find((candidate) =>
+    booleanPointInPolygon(
+      [point.lon, point.lat],
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      candidate as Parameters<typeof booleanPointInPolygon>[1],
+    ),
+  );
 
-      return feature === undefined
-        ? { inside: false, zone: null }
-        : { inside: true, zone: featureName(feature) };
-    },
-  };
+  return feature === undefined
+    ? { inside: false, zone: null }
+    : { inside: true, zone: featureName(feature) };
 }
 
 /** Only Polygon and MultiPolygon features are checked; any other feature is ignored. */
-function zoneFeatures(value: unknown, zonePath: string): ZoneFeature[] {
+function zoneFeatures(value: unknown): ZoneFeature[] {
   const candidates: unknown[] =
     isRecord(value) && value.type === "FeatureCollection" && Array.isArray(value.features)
       ? value.features
@@ -83,7 +74,7 @@ function zoneFeatures(value: unknown, zonePath: string): ZoneFeature[] {
       return false;
     }
     if (!isZoneFeature(candidate)) {
-      throw new Error(`Zone file "${zonePath}" is not valid GeoJSON: contains an invalid feature`);
+      throw new Error("is not valid GeoJSON: contains an invalid feature");
     }
     return true;
   });
@@ -150,12 +141,4 @@ function featureName(feature: ZoneFeature): string | null {
   return typeof name === "string" ? name : null;
 }
 
-export {
-  type ZoneFeature,
-  type ZoneResult,
-  type Point,
-  type ZoneChecker,
-  readZoneFile,
-  createZoneChecker,
-  featureName,
-};
+export { type Zone, type ZoneFeature, type ZoneResult, type Point, parseZone, inZone, featureName };

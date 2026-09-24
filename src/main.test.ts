@@ -1,4 +1,3 @@
-import { rmSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
@@ -8,7 +7,7 @@ import type { SessionClient, TelegramClientLike } from "./telegram.js";
 
 import { runDaemon, runLogin } from "./main.js";
 import { createSentryReporter } from "./sentry.js";
-import { ownerFiles, quiet, temporaryDirectory, testSettings } from "./test-support.js";
+import { quiet, temporaryDirectory, testSettings, writeOwnerFiles } from "./test-support.js";
 
 function noLock(): SessionLock {
   return {
@@ -77,7 +76,7 @@ describe("runDaemon", () => {
       start: vi.fn<SessionClient["start"]>(() => Promise.resolve(events.push("start"))),
     });
 
-    await startDaemon(client, testSettings(ownerFiles("-1001234567890\n-1009876543210\n")));
+    await startDaemon(client, testSettings(writeOwnerFiles("-1001234567890\n-1009876543210\n")));
 
     expect(events).toStrictEqual(["start", "send", "stream"]);
     expect(client.sendText).toHaveBeenCalledWith(
@@ -111,22 +110,5 @@ describe("runDaemon", () => {
 
     await expect(startDaemon(client)).rejects.toThrow("Saved Messages unavailable");
     expect(client.destroy).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([
-    ["Criteria", "criteriaPath"],
-    ["Prompt", "promptPath"],
-    ["Zone", "zonePath"],
-    ["Watchlist", "channelsPath"],
-  ] as const)("names the %s file when it cannot be read", async (label, file) => {
-    expect.hasAssertions();
-    const files = ownerFiles();
-    rmSync(files[file]);
-    const client = fakeClient();
-
-    await expect(startDaemon(client, testSettings(files))).rejects.toThrow(
-      new RegExp(`${label} file .*${files[file]}`, "u"),
-    );
-    expect(client.start).not.toHaveBeenCalled();
   });
 });

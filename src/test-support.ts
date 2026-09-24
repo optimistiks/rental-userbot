@@ -1,4 +1,5 @@
 /* Fixtures shared by the test files; nothing in the bot imports this. */
+// oxlint-disable import/max-dependencies
 import type { LanguageModel } from "ai";
 import type { MockInstance } from "vitest";
 
@@ -11,10 +12,12 @@ import { onTestFinished, vi } from "vitest";
 import type { Settings } from "./config.js";
 import type { DedupeStore } from "./dedupe-store.js";
 import type { Evaluator, EvaluatorOptions } from "./evaluator.js";
+import type { OwnerFileContents, OwnerFilePaths, OwnerFiles } from "./owner-files.js";
 import type { Post } from "./telegram.js";
 
 import { openDedupeStore } from "./dedupe-store.js";
-import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
+import { createEvaluator } from "./evaluator.js";
+import { parseZone } from "./zone.js";
 
 const WATCHED_CHANNEL_ID = -1_001_234_567_890;
 
@@ -30,13 +33,6 @@ const UNIT_SQUARE = [
   [0, 1],
   [0, 0],
 ];
-
-interface OwnerFiles {
-  channelsPath: string;
-  criteriaPath: string;
-  promptPath: string;
-  zonePath: string;
-}
 
 /** A Listing from the watched channel: post text and three photos. */
 function post(id: number, overrides: Partial<Post> = {}): Post {
@@ -79,7 +75,7 @@ function zoneCollection(name: string, ring = UNIT_SQUARE): unknown {
 }
 
 /** The four owner-edited files, written fresh to their own directory. */
-function ownerFiles(channels = "-1001234567890\n"): OwnerFiles {
+function writeOwnerFiles(channels = "-1001234567890\n"): OwnerFilePaths {
   const directory = temporaryDirectory();
   const files = {
     channelsPath: path.join(directory, "channels.txt"),
@@ -94,7 +90,22 @@ function ownerFiles(channels = "-1001234567890\n"): OwnerFiles {
   return files;
 }
 
-function testSettings(files: OwnerFiles = ownerFiles()): Settings {
+/** The Owner files as a Post would read them: the same text writeOwnerFiles writes. */
+function ownerFileContents(overrides: Partial<OwnerFileContents> = {}): OwnerFileContents {
+  return {
+    criteria: "Want a 1+1 in Old Town.",
+    prompt: "Judge the listing.",
+    zone: parseZone(JSON.stringify(zoneCollection("Old Batumi"))),
+    ...overrides,
+  };
+}
+
+/** Owner files that always read, never with a Notice. */
+function readableOwnerFiles(): Pick<OwnerFiles, "read"> {
+  return { read: () => ({ contents: ownerFileContents() }) };
+}
+
+function testSettings(files: OwnerFilePaths = writeOwnerFiles()): Settings {
   return {
     ...files,
     aiGatewayApiKey: "gateway-key",
@@ -129,7 +140,7 @@ function verdictModel(...verdicts: { match: boolean; notes: string }[]): MockLan
   return new MockLanguageModelV4({ doGenerate: results.length === 1 ? results[0] : results });
 }
 
-/** A real Evaluator over fresh owner files, with photo downloads and tools that always work. */
+/** A real Evaluator whose photo downloads always work and whose geocoder finds nothing. */
 function testEvaluator(
   model: LanguageModel,
   options: Partial<EvaluatorOptions> = {},
@@ -137,11 +148,8 @@ function testEvaluator(
 ): Evaluator {
   return createEvaluator(settings, {
     downloadPhoto: () => Promise.resolve(new Uint8Array([0])),
+    geocode: () => Promise.resolve({ results: [] }),
     model,
-    tools: createEvaluatorTools({
-      geocode: () => Promise.resolve({ results: [] }),
-      inZone: () => ({ inside: false, zone: null }),
-    }),
     ...options,
   });
 }
@@ -149,12 +157,13 @@ function testEvaluator(
 export {
   WATCHED_CHANNEL_ID,
   usage,
-  type OwnerFiles,
   post,
   quiet,
   temporaryDirectory,
   zoneCollection,
-  ownerFiles,
+  writeOwnerFiles,
+  ownerFileContents,
+  readableOwnerFiles,
   testSettings,
   memoryStore,
   verdictModel,

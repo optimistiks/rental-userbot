@@ -1,6 +1,6 @@
 import type { DedupeStore } from "./dedupe-store.js";
 import type { EvaluationContext, EvaluationFailure, Evaluator, Verdict } from "./evaluator.js";
-import type { Notices } from "./notices.js";
+import type { OwnerFileContents, OwnerFiles } from "./owner-files.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { Post, Telegram } from "./telegram.js";
 
@@ -18,7 +18,7 @@ interface PostPipelineOptions {
   evaluator: Evaluator;
   telegram: Pick<Telegram, "sendToMe">;
   dedupeStore: DedupeStore;
-  notices?: Notices;
+  ownerFiles: Pick<OwnerFiles, "read">;
   errorReporter?: ErrorReporter;
   /** How many Listings are evaluated at once. Telegram calls stay one at a time in the adapter. */
   concurrency?: number;
@@ -56,6 +56,7 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
   async function runQueued(
     post: Post,
     processedPostKey: string,
+    ownerFiles: OwnerFileContents,
     noticeSend: Promise<void>,
   ): Promise<void> {
     const queuedAt = Date.now();
@@ -65,6 +66,7 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
       await processQueuedPost(
         post,
         processedPostKey,
+        ownerFiles,
         { waitedMs: Date.now() - queuedAt, waiting: slotWaiters.length },
         options,
         errorReporter,
@@ -77,10 +79,10 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
 
   return {
     process(post) {
-      const noticePull = options.notices?.pull() ?? { canEvaluate: true };
-      const noticeSend = deliverNotice(post, noticePull.notice, options, errorReporter);
+      const { contents, notice } = options.ownerFiles.read();
+      const noticeSend = deliverNotice(post, notice, options, errorReporter);
 
-      if (!noticePull.canEvaluate) {
+      if (contents === undefined) {
         return noticeSend;
       }
 
@@ -95,7 +97,7 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
       }
 
       inFlight.add(processedPostKey);
-      return runQueued(post, processedPostKey, noticeSend);
+      return runQueued(post, processedPostKey, contents, noticeSend);
     },
   };
 }
@@ -103,6 +105,7 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
 async function processQueuedPost(
   post: Post,
   processedPostKey: string,
+  ownerFiles: OwnerFileContents,
   context: EvaluationContext,
   options: PostPipelineOptions,
   errorReporter: ErrorReporter,
@@ -111,7 +114,7 @@ async function processQueuedPost(
   // Still reach the Notifier and be marked processed, so nothing is silently lost.
   let verdict: Verdict;
   try {
-    verdict = await options.evaluator.evaluate(post, context);
+    verdict = await options.evaluator.evaluate(post, ownerFiles, context);
   } catch (error) {
     console.error(`post ${post.link}: evaluation threw`, error);
     errorReporter.captureException(error, { phase: "evaluation", postLink: post.link });

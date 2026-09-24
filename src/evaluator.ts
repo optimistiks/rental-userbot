@@ -6,13 +6,14 @@ import { z } from "zod";
 
 import type { Level, Settings } from "./config.js";
 import type { GeocodeResponse } from "./geocoder.js";
+import type { OwnerFileContents } from "./owner-files.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef, Post } from "./telegram.js";
-import type { Point, ZoneResult } from "./zone.js";
+import type { Zone } from "./zone.js";
 
 import { errorMessage, errorName, isRecord } from "./errors.js";
 import { createSentryReporter } from "./sentry.js";
-import { readTextFile } from "./text-file.js";
+import { inZone } from "./zone.js";
 
 const verdictSchema = z.object({
   match: z.boolean(),
@@ -26,22 +27,16 @@ interface EvaluationFailure {
 
 type Verdict = z.infer<typeof verdictSchema> | EvaluationFailure;
 
-type EvaluatorSettings = Pick<
-  Settings,
-  "modelId" | "promptPath" | "criteriaPath" | "mediaResolution" | "thinkingLevel"
->;
+type EvaluatorSettings = Pick<Settings, "modelId" | "mediaResolution" | "thinkingLevel">;
+
+type Geocode = (query: string, signal?: AbortSignal) => Promise<GeocodeResponse>;
 
 interface EvaluatorOptions {
   model?: LanguageModel;
   downloadPhoto: (ref: PhotoRef) => Promise<Uint8Array>;
   retryPolicy?: RetryPolicy;
-  tools: EvaluatorToolSet;
+  geocode: Geocode;
   errorReporter?: ErrorReporter;
-}
-
-interface EvaluatorToolImplementations {
-  geocode: (query: string, signal?: AbortSignal) => Promise<GeocodeResponse>;
-  inZone: (point: Point) => ZoneResult;
 }
 
 interface LocatedCandidate {
@@ -63,7 +58,11 @@ interface EvaluationContext {
 }
 
 interface Evaluator {
-  evaluate: (listing: Post, context?: EvaluationContext) => Promise<Verdict>;
+  evaluate: (
+    listing: Post,
+    ownerFiles: OwnerFileContents,
+    context?: EvaluationContext,
+  ) => Promise<Verdict>;
 }
 
 interface RetryPolicy {
@@ -82,13 +81,14 @@ const DEFAULT_RETRY_POLICY: RetryPolicy = {
 
 function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions): Evaluator {
   const model = options.model ?? settings.modelId;
-  const { downloadPhoto, tools } = options;
+  const { downloadPhoto, geocode } = options;
   const retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY;
   const errorReporter = options.errorReporter ?? createSentryReporter();
 
   return {
-    async evaluate(post, context) {
+    async evaluate(post, ownerFiles, context) {
       const { link } = post;
+      const tools = createEvaluatorTools(geocode, ownerFiles.zone);
       const photoData = await downloadPhotos(post.photos, link, downloadPhoto);
 
       const content: (
@@ -117,17 +117,6 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions)
       const attempts = Math.max(1, retryPolicy.attempts);
       const startedAt = Date.now();
       for (let attempt = 0; attempt < attempts; attempt += 1) {
-        let prompt: string;
-        let criteria: string;
-        try {
-          prompt = readTextFile(settings.promptPath, "Prompt");
-          criteria = readTextFile(settings.criteriaPath, "Criteria");
-        } catch (error) {
-          console.error(`post ${link}: evaluation setup failed`, error);
-          errorReporter.captureException(error, { phase: "evaluation", postLink: link });
-          return evaluationFailure(error);
-        }
-
         try {
           /* Attempts are sequential by design: a retry only makes sense once the
           previous one has failed. */
@@ -146,7 +135,7 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions)
                     },
                   }
                 : {}),
-              instructions: `${prompt}\n\nCriteria:\n${criteria}`,
+              instructions: `${ownerFiles.prompt}\n\nCriteria:\n${ownerFiles.criteria}`,
               maxRetries: 0,
               messages: [
                 {
@@ -205,26 +194,25 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions)
   };
 }
 
-/* EvaluatorToolSet is derived from this function's return type, so naming
-that type here would be circular. */
-// oxlint-disable-next-line typescript/explicit-function-return-type, typescript/explicit-module-boundary-types
-function createEvaluatorTools(implementations: EvaluatorToolImplementations) {
+/* The tool set's type is inferred for generateText; spelling it out would repeat the SDK's generics. */
+// oxlint-disable-next-line typescript/explicit-function-return-type
+function createEvaluatorTools(geocode: Geocode, zone: Zone) {
   return {
     locateInZone: tool({
       description:
         "Search for an apartment or landmark in Batumi and check every candidate against the configured rental Zone. Use a cleaned address or place name. Returns up to three candidates with coordinates, precision, and Zone status so you can resolve ambiguous locations.",
       execute: async ({ query }, { abortSignal }): Promise<{ results: LocatedCandidate[] }> => {
-        const response = await implementations.geocode(query, abortSignal);
+        const response = await geocode(query, abortSignal);
         return {
           results: response.results.map((result) => {
-            const zone = implementations.inZone({ lat: result.lat, lon: result.lon });
+            const status = inZone(zone, { lat: result.lat, lon: result.lon });
             return {
-              inside: zone.inside,
+              inside: status.inside,
               label: result.label,
               lat: result.lat,
               lon: result.lon,
               precision: result.precision,
-              zone: zone.zone,
+              zone: status.zone,
             };
           }),
         };
@@ -233,8 +221,6 @@ function createEvaluatorTools(implementations: EvaluatorToolImplementations) {
     }),
   };
 }
-
-type EvaluatorToolSet = ReturnType<typeof createEvaluatorTools>;
 
 function evaluationFailure(error: unknown): EvaluationFailure {
   const label = hasTimeoutCause(error) ? "timeout" : errorName(error);
@@ -393,10 +379,8 @@ export {
   type EvaluationFailure,
   type Verdict,
   type EvaluatorOptions,
-  type EvaluatorToolImplementations,
   type Evaluator,
   type RetryPolicy,
   createEvaluator,
-  createEvaluatorTools,
   evaluationFailure,
 };

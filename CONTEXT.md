@@ -12,6 +12,10 @@ _Avoid_: user, admin
 
 ### What the owner writes
 
+**Owner files**:
+The Watchlist, Criteria, Prompt and Zone together: everything the owner tunes by editing a file. A Post is handled by the Owner files as they read when it arrived, so an edit applies to Posts that arrive after it and never to one already waiting.
+_Avoid_: config, settings, settings files
+
 **Watchlist**:
 The channels the bot follows, written by the owner as a file of channel IDs they edit without code changes or a restart. An empty Watchlist watches nothing, which is a normal state.
 _Avoid_: channel list, subscriptions, sources
@@ -54,7 +58,7 @@ _Avoid_: listing (when meaning the real-world offer)
 
 **Processed Post**:
 A Post whose Verdict has been handled, whether it was a match, no match, or evaluation failure. A Processed Post is never evaluated again, even if it arrives again after a restart or as a late part of an album.
-_Avoid_: seen, handled, done
+_Avoid_: seen, handled, done, dedupe store
 
 ### What the bot decides
 

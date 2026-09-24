@@ -9,16 +9,14 @@ import type { SessionClient, TelegramClientLike } from "./telegram.js";
 import { readLoginSettings, readSettings } from "./config.js";
 import { openDedupeStore } from "./dedupe-store.js";
 import { errorMessage } from "./errors.js";
-import { createEvaluator, createEvaluatorTools } from "./evaluator.js";
+import { createEvaluator } from "./evaluator.js";
 import { createGeocoder } from "./geocoder.js";
-import { createNotices } from "./notices.js";
+import { openOwnerFiles } from "./owner-files.js";
 import { createPostPipeline } from "./pipeline.js";
 import { createSentryReporter } from "./sentry.js";
 import { acquireSessionLock } from "./session-lock.js";
 import { createTelegramAdapter, createTelegramClient, daemonStartParams } from "./telegram.js";
-import { readTextFile } from "./text-file.js";
-import { readWatchlistFile, watchedChannelIds, watchingMessage } from "./watchlist.js";
-import { createZoneChecker, readZoneFile } from "./zone.js";
+import { watchingMessage } from "./watchlist.js";
 
 type ManagedClient = TelegramClientLike &
   SessionClient & {
@@ -53,24 +51,15 @@ async function runDaemon(
   let client: ManagedClient | undefined;
 
   try {
-    // Read-and-discard: every one of these is re-read while the bot runs, so this is
-    // Only the startup check that they exist and parse. A watchlist missing here means
-    // The setup was never finished; one that vanishes later just means watching nothing.
-    readTextFile(settings.criteriaPath, "Criteria");
-    readTextFile(settings.promptPath, "Prompt");
-    readZoneFile(settings.zonePath);
-    readWatchlistFile(settings.channelsPath);
+    const ownerFiles = openOwnerFiles(settings);
     dedupeStore = openDedupeStore(databasePath);
     client = makeClient(settings);
     await client.start(daemonStartParams);
-    const channelIds = (): number[] => watchedChannelIds(settings.channelsPath);
-    const telegram = createTelegramAdapter(client, channelIds);
-    const notices = createNotices(settings);
-    const startupNotice = `🟢 started, ${watchingMessage(channelIds().length)}`;
+    const telegram = createTelegramAdapter(client, ownerFiles.watchedChannelIds);
+    const startupNotice = `🟢 started, ${watchingMessage(ownerFiles.watchedAtStartup)}`;
     console.log(`startup: ${startupNotice}`);
     await telegram.sendToMe(startupNotice);
     const geocoder = createGeocoder(settings);
-    const zoneChecker = createZoneChecker(settings.zonePath);
     const pipeline = createPostPipeline({
       concurrency: settings.evaluationConcurrency,
       dedupeStore,
@@ -78,12 +67,9 @@ async function runDaemon(
       evaluator: createEvaluator(settings, {
         downloadPhoto: telegram.downloadPhoto,
         errorReporter,
-        tools: createEvaluatorTools({
-          geocode: (query, signal) => geocoder.geocode(query, signal),
-          inZone: (point) => zoneChecker.inZone(point),
-        }),
+        geocode: (query, signal) => geocoder.geocode(query, signal),
       }),
-      notices,
+      ownerFiles,
       telegram,
     });
     telegram.onPost((post) => {

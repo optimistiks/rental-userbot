@@ -1,21 +1,21 @@
 import { MockLanguageModelV4 } from "ai/test";
-import { rmSync, writeFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
-import type { EvaluationFailure, EvaluatorToolImplementations, RetryPolicy } from "./evaluator.js";
+import type { EvaluationFailure, EvaluatorOptions, RetryPolicy } from "./evaluator.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef } from "./telegram.js";
 
-import { createEvaluatorTools } from "./evaluator.js";
 import {
-  ownerFiles,
+  ownerFileContents,
   post,
   quiet,
   testEvaluator,
   testSettings,
   usage,
   verdictModel,
+  zoneCollection,
 } from "./test-support.js";
+import { parseZone } from "./zone.js";
 
 type GenerateResult = Awaited<
   ReturnType<
@@ -105,7 +105,7 @@ describe("evaluator", () => {
       retryPolicy: { attempts: 1, backoffsMs: [], maxSteps: 8, timeoutMs: 100 },
     });
 
-    await expect(evaluator.evaluate(post(53))).resolves.toMatchObject({
+    await expect(evaluator.evaluate(post(53), ownerFileContents())).resolves.toMatchObject({
       kind: "evaluation-failure",
     });
 
@@ -119,7 +119,7 @@ describe("evaluator", () => {
   it("lets the agent locate every geocoder candidate in the Zone before returning its Verdict", async () => {
     expect.hasAssertions();
     const log = quiet("log");
-    const geocode = vi.fn<EvaluatorToolImplementations["geocode"]>(() =>
+    const geocode = vi.fn<EvaluatorOptions["geocode"]>(() =>
       Promise.resolve({
         results: [
           {
@@ -137,20 +137,23 @@ describe("evaluator", () => {
         ],
       }),
     );
-    const inZone = vi
-      .fn<EvaluatorToolImplementations["inZone"]>()
-      .mockReturnValueOnce({ inside: true, zone: "Old Batumi" })
-      .mockReturnValueOnce({ inside: false, zone: null });
+    // Around the first candidate only, in GeoJSON's [lon, lat] order.
+    const aroundFirstCandidate = zoneCollection("Old Batumi", [
+      [41.63, 41.645],
+      [41.645, 41.645],
+      [41.645, 41.655],
+      [41.63, 41.655],
+      [41.63, 41.645],
+    ]);
+    const ownerFiles = ownerFileContents({ zone: parseZone(JSON.stringify(aroundFirstCandidate)) });
     const model = locatingModel("Gorgasali 33", { match: true, notes: "In Old Batumi" });
-    const evaluator = testEvaluator(model, { tools: createEvaluatorTools({ geocode, inZone }) });
+    const evaluator = testEvaluator(model, { geocode });
 
     await expect(
-      evaluator.evaluate(post(52, { text: "Flat at Gorgasali 33" })),
+      evaluator.evaluate(post(52, { text: "Flat at Gorgasali 33" }), ownerFiles),
     ).resolves.toStrictEqual({ match: true, notes: "In Old Batumi" });
 
     expect(geocode).toHaveBeenCalledWith("Gorgasali 33", expect.anything());
-    expect(inZone).toHaveBeenNthCalledWith(1, { lat: 41.6481086, lon: 41.6393883 });
-    expect(inZone).toHaveBeenNthCalledWith(2, { lat: 41.641, lon: 41.62 });
     expect(model.doGenerateCalls).toHaveLength(2);
     expect(JSON.stringify(model.doGenerateCalls[1].prompt)).toContain(
       '"label":"Gorgasali Street, Batumi","lat":41.641,"lon":41.62,"precision":"street","zone":null',
@@ -169,13 +172,10 @@ describe("evaluator", () => {
     quiet("log");
     const model = locatingModel("Unknown address", { match: false, notes: "Location unclear" });
     const evaluator = testEvaluator(model, {
-      tools: createEvaluatorTools({
-        geocode: () => Promise.reject(new Error("provider unavailable")),
-        inZone: () => ({ inside: false, zone: null }),
-      }),
+      geocode: () => Promise.reject(new Error("provider unavailable")),
     });
 
-    await expect(evaluator.evaluate(post(1))).resolves.toStrictEqual({
+    await expect(evaluator.evaluate(post(1), ownerFileContents())).resolves.toStrictEqual({
       match: false,
       notes: "Location unclear",
     });
@@ -184,30 +184,27 @@ describe("evaluator", () => {
     );
   });
 
-  it("re-reads the prompt and Criteria and returns the structured Verdict", async () => {
+  it("judges against the Prompt and Criteria it is given for this Post", async () => {
     expect.hasAssertions();
     quiet("log");
-    const files = ownerFiles();
-    writeFileSync(files.promptPath, "Prompt version one");
-    writeFileSync(files.criteriaPath, "Criteria version one");
     const model = verdictModel(
       { match: true, notes: "First notes" },
       { match: false, notes: "Second notes" },
     );
-    const evaluator = testEvaluator(model, {}, testSettings(files));
+    const evaluator = testEvaluator(model);
 
-    await expect(evaluator.evaluate(post(1, { text: "First Post" }))).resolves.toStrictEqual({
-      match: true,
-      notes: "First notes",
-    });
-
-    writeFileSync(files.promptPath, "Prompt version two");
-    writeFileSync(files.criteriaPath, "Criteria version two");
-
-    await expect(evaluator.evaluate(post(2, { text: "Second Post" }))).resolves.toStrictEqual({
-      match: false,
-      notes: "Second notes",
-    });
+    await expect(
+      evaluator.evaluate(
+        post(1, { text: "First Post" }),
+        ownerFileContents({ criteria: "Criteria version one", prompt: "Prompt version one" }),
+      ),
+    ).resolves.toStrictEqual({ match: true, notes: "First notes" });
+    await expect(
+      evaluator.evaluate(
+        post(2, { text: "Second Post" }),
+        ownerFileContents({ criteria: "Criteria version two", prompt: "Prompt version two" }),
+      ),
+    ).resolves.toStrictEqual({ match: false, notes: "Second notes" });
 
     const firstPrompt = JSON.stringify(model.doGenerateCalls[0].prompt);
     const secondPrompt = JSON.stringify(model.doGenerateCalls[1].prompt);
@@ -235,7 +232,10 @@ describe("evaluator", () => {
     );
 
     await expect(
-      evaluator.evaluate(post(50, { photos: ["first", "second"], text: "Flat with photos" })),
+      evaluator.evaluate(
+        post(50, { photos: ["first", "second"], text: "Flat with photos" }),
+        ownerFileContents(),
+      ),
     ).resolves.toStrictEqual({ match: true, notes: "Looks good" });
 
     expect(downloadPhoto).toHaveBeenNthCalledWith(1, "first");
@@ -281,7 +281,7 @@ describe("evaluation failures", () => {
     });
 
     await expect(
-      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(1)),
+      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(1), ownerFileContents()),
     ).resolves.toStrictEqual({
       error: "Error: gateway failed",
       kind: "evaluation-failure",
@@ -307,7 +307,7 @@ describe("evaluation failures", () => {
     });
 
     await expect(
-      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(2)),
+      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(2), ownerFileContents()),
     ).resolves.toStrictEqual({ match: true, notes: "Recovered" });
     expect(model.doGenerateCalls).toHaveLength(2);
   });
@@ -327,7 +327,10 @@ describe("evaluation failures", () => {
       doGenerate: { content, finishReason: { raw: undefined, unified }, usage, warnings: [] },
     });
 
-    const verdict = await testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(3));
+    const verdict = await testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(
+      post(3),
+      ownerFileContents(),
+    );
 
     expect(JSON.stringify(verdict)).toContain(expected);
     expect(model.doGenerateCalls).toHaveLength(3);
@@ -342,29 +345,14 @@ describe("evaluation failures", () => {
     });
 
     await expect(
-      testEvaluator(model, { retryPolicy: retryPolicy(10) }).evaluate(post(31)),
+      testEvaluator(model, { retryPolicy: retryPolicy(10) }).evaluate(
+        post(31),
+        ownerFileContents(),
+      ),
     ).resolves.toMatchObject({
       error: expect.stringMatching(/^timeout:/u) as string,
       kind: "evaluation-failure",
     });
     expect(model.doGenerateCalls).toHaveLength(3);
-  });
-
-  it("returns a prompt or Criteria read failure without an agent run or retry", async () => {
-    expect.hasAssertions();
-    const consoleError = quiet("error");
-    quiet("log");
-    const files = ownerFiles();
-    rmSync(files.criteriaPath);
-    const model = verdictModel({ match: true, notes: "Looks good" });
-
-    await expect(
-      testEvaluator(model, { retryPolicy: retryPolicy() }, testSettings(files)).evaluate(post(4)),
-    ).resolves.toMatchObject({
-      error: expect.stringContaining("Criteria file") as string,
-      kind: "evaluation-failure",
-    });
-    expect(model.doGenerateCalls).toHaveLength(0);
-    expect(consoleError).toHaveBeenCalledTimes(1);
   });
 });

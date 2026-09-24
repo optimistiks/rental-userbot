@@ -1,12 +1,10 @@
-import { writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { ZoneFeature } from "./zone.js";
 
-import { temporaryDirectory } from "./test-support.js";
-import { createZoneChecker, readZoneFile } from "./zone.js";
+import { inZone, parseZone } from "./zone.js";
 
 const polygon = (
   name: string,
@@ -23,16 +21,14 @@ const polygon = (
   type: "Feature",
 });
 
-function writeZone(value: unknown): string {
-  const zonePath = path.join(temporaryDirectory(), "zone.geojson");
-  writeFileSync(zonePath, JSON.stringify(value));
-  return zonePath;
+function parse(value: unknown): ReturnType<typeof parseZone> {
+  return parseZone(JSON.stringify(value));
 }
 
-describe("readZoneFile", () => {
+describe("parseZone", () => {
   it("reads a FeatureCollection with Polygon and MultiPolygon features", () => {
     expect.hasAssertions();
-    const zoneFile = writeZone({
+    const zone = parse({
       features: [
         polygon("Old Batumi"),
         {
@@ -57,102 +53,72 @@ describe("readZoneFile", () => {
       type: "FeatureCollection",
     });
 
-    expect(readZoneFile(zoneFile)).toHaveLength(2);
+    expect(zone).toHaveLength(2);
   });
 
-  it("names a missing, malformed, or empty Zone file", () => {
+  it("rejects malformed, empty, or invalid outlines", () => {
     expect.hasAssertions();
-    const missingPath = path.join(tmpdir(), "missing-rental-zone.geojson");
-    expect(() => readZoneFile(missingPath)).toThrow(new RegExp(`Zone file .*${missingPath}`, "u"));
+    expect(() => parseZone("{")).toThrow(/valid GeoJSON/u);
 
-    const malformedPath = path.join(temporaryDirectory(), "zone.geojson");
-    writeFileSync(malformedPath, "{");
-    expect(() => readZoneFile(malformedPath)).toThrow(/Zone file .*valid GeoJSON/u);
+    const empty = (): unknown => parse({ features: [], type: "FeatureCollection" });
+    expect(empty).toThrow(/Polygon or MultiPolygon/u);
 
-    const emptyPath = writeZone({ features: [], type: "FeatureCollection" });
-    expect(() => readZoneFile(emptyPath)).toThrow(/Zone file .*Polygon or MultiPolygon/u);
+    const point = (): unknown =>
+      parse({
+        features: [
+          { geometry: { coordinates: [0, 0], type: "Point" }, properties: {}, type: "Feature" },
+        ],
+        type: "FeatureCollection",
+      });
+    expect(point).toThrow(/Polygon or MultiPolygon/u);
 
-    const pointPath = writeZone({
-      features: [
-        { geometry: { coordinates: [0, 0], type: "Point" }, properties: {}, type: "Feature" },
-      ],
-      type: "FeatureCollection",
-    });
-    expect(() => readZoneFile(pointPath)).toThrow(/Zone file .*Polygon or MultiPolygon/u);
-
-    const openRingPath = writeZone({
-      features: [
-        {
-          geometry: {
-            coordinates: [
-              [
-                [0, 0],
-                [1, 0],
-                [1, 1],
+    const openRing = (): unknown =>
+      parse({
+        features: [
+          {
+            geometry: {
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                ],
               ],
-            ],
-            type: "Polygon",
+              type: "Polygon",
+            },
+            properties: {},
+            type: "Feature",
           },
-          properties: {},
-          type: "Feature",
-        },
-      ],
-      type: "FeatureCollection",
-    });
-    expect(() => readZoneFile(openRingPath)).toThrow(/Zone file .*valid GeoJSON/u);
+        ],
+        type: "FeatureCollection",
+      });
+    expect(openRing).toThrow(/valid GeoJSON/u);
 
-    const mixedInvalidPath = writeZone({
-      features: [
-        polygon("Valid"),
-        { geometry: { type: "Polygon" }, properties: {}, type: "Feature" },
-      ],
-      type: "FeatureCollection",
-    });
-    expect(() => readZoneFile(mixedInvalidPath)).toThrow(/Zone file .*invalid feature/u);
+    const mixedInvalid = (): unknown =>
+      parse({
+        features: [
+          polygon("Valid"),
+          { geometry: { type: "Polygon" }, properties: {}, type: "Feature" },
+        ],
+        type: "FeatureCollection",
+      });
+    expect(mixedInvalid).toThrow(/invalid feature/u);
   });
 });
 
-describe("createZoneChecker", () => {
+describe("inZone", () => {
   it("answers known points from the starting Zone", () => {
     expect.hasAssertions();
-    const checker = createZoneChecker(path.join(process.cwd(), "data.example/zone.geojson"));
+    const zonePath = path.join(process.cwd(), "data.example/zone.geojson");
+    const zone = parseZone(readFileSync(zonePath, "utf8"));
 
-    expect(checker.inZone({ lat: 41.6437281, lon: 41.6322006 })).toStrictEqual({
+    expect(inZone(zone, { lat: 41.6437281, lon: 41.6322006 })).toStrictEqual({
       inside: true,
       zone: "Rustaveli",
     });
-    expect(checker.inZone({ lat: 41.6400004, lon: 41.622037 })).toStrictEqual({
+    expect(inZone(zone, { lat: 41.6400004, lon: 41.622037 })).toStrictEqual({
       inside: false,
       zone: null,
-    });
-  });
-
-  it("re-reads the Zone file on every call", () => {
-    expect.hasAssertions();
-    const zoneFile = writeZone({ features: [polygon("First")], type: "FeatureCollection" });
-    const checker = createZoneChecker(zoneFile);
-
-    expect(checker.inZone({ lat: 0.5, lon: 0.5 })).toStrictEqual({ inside: true, zone: "First" });
-    writeFileSync(
-      zoneFile,
-      JSON.stringify({
-        features: [
-          polygon("Second", [
-            [10, 10],
-            [11, 10],
-            [11, 11],
-            [10, 11],
-            [10, 10],
-          ]),
-        ],
-        type: "FeatureCollection",
-      }),
-    );
-
-    expect(checker.inZone({ lat: 0.5, lon: 0.5 })).toStrictEqual({ inside: false, zone: null });
-    expect(checker.inZone({ lat: 10.5, lon: 10.5 })).toStrictEqual({
-      inside: true,
-      zone: "Second",
     });
   });
 });
