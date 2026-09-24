@@ -6,6 +6,7 @@ import type { Listing } from "./listing.js";
 import type { Locator } from "./locate.js";
 import type { ErrorReporter } from "./sentry.js";
 
+import { createSentryReporter } from "./sentry.js";
 import {
   listing,
   ownerFileContents,
@@ -115,6 +116,29 @@ describe("evaluator", () => {
     });
   });
 
+  it("turns anything else that goes wrong into an Evaluation failure, never a throw", async () => {
+    expect.hasAssertions();
+    quiet("error");
+    const errorReporter = {
+      ...createSentryReporter(),
+      captureException: vi.fn<ErrorReporter["captureException"]>(),
+    };
+    const model = verdictModel({ match: true, notes: "Looks good" });
+    const photos = vi.fn<Listing["photos"]>(() => Promise.reject(new Error("photos exploded")));
+
+    await expect(
+      testEvaluator(model, { errorReporter }).evaluate(
+        listing(54, { photos }),
+        ownerFileContents(),
+      ),
+    ).resolves.toStrictEqual({ error: "Error: photos exploded", kind: "evaluation-failure" });
+    expect(model.doGenerateCalls).toHaveLength(0);
+    expect(errorReporter.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      phase: "evaluation",
+      postLink: "https://t.me/example/54",
+    });
+  });
+
   it("lets the agent locate a place in this Post's Zone before returning its Verdict", async () => {
     expect.hasAssertions();
     const log = quiet("log");
@@ -144,7 +168,7 @@ describe("evaluator", () => {
 
     await expect(
       evaluator.evaluate(listing(52, { text: "Flat at Gorgasali 33" }), ownerFiles),
-    ).resolves.toStrictEqual({ match: true, notes: "In Old Batumi" });
+    ).resolves.toStrictEqual({ kind: "match", notes: "In Old Batumi" });
 
     expect(locate).toHaveBeenCalledWith("Gorgasali 33", ownerFiles.zone, expect.anything());
     expect(model.doGenerateCalls).toHaveLength(2);
@@ -169,7 +193,7 @@ describe("evaluator", () => {
     });
 
     await expect(evaluator.evaluate(listing(1), ownerFileContents())).resolves.toStrictEqual({
-      match: false,
+      kind: "no-match",
       notes: "Location unclear",
     });
     expect(model.doGenerateCalls[1].prompt).toContainEqual(
@@ -191,13 +215,13 @@ describe("evaluator", () => {
         listing(1, { text: "First Post" }),
         ownerFileContents({ criteria: "Criteria version one", prompt: "Prompt version one" }),
       ),
-    ).resolves.toStrictEqual({ match: true, notes: "First notes" });
+    ).resolves.toStrictEqual({ kind: "match", notes: "First notes" });
     await expect(
       evaluator.evaluate(
         listing(2, { text: "Second Post" }),
         ownerFileContents({ criteria: "Criteria version two", prompt: "Prompt version two" }),
       ),
-    ).resolves.toStrictEqual({ match: false, notes: "Second notes" });
+    ).resolves.toStrictEqual({ kind: "no-match", notes: "Second notes" });
 
     const firstPrompt = JSON.stringify(model.doGenerateCalls[0].prompt);
     const secondPrompt = JSON.stringify(model.doGenerateCalls[1].prompt);
@@ -229,7 +253,7 @@ describe("evaluator", () => {
 
     await expect(
       evaluator.evaluate(listing(50, { photos, text: "Flat with photos" }), ownerFileContents()),
-    ).resolves.toStrictEqual({ match: true, notes: "Looks good" });
+    ).resolves.toStrictEqual({ kind: "match", notes: "Looks good" });
 
     expect(photos).toHaveBeenCalledTimes(1);
 
@@ -306,7 +330,7 @@ describe("evaluation failures", () => {
         listing(2),
         ownerFileContents(),
       ),
-    ).resolves.toStrictEqual({ match: true, notes: "Recovered" });
+    ).resolves.toStrictEqual({ kind: "match", notes: "Recovered" });
     expect(model.doGenerateCalls).toHaveLength(2);
   });
 

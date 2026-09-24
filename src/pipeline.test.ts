@@ -2,10 +2,11 @@ import { rmSync, writeFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Evaluator, Verdict } from "./evaluator.js";
+import type { PostPipeline, PostPipelineOptions } from "./pipeline.js";
 import type { ProcessedPosts } from "./processed-posts.js";
-import type { ErrorReporter } from "./sentry.js";
 import type { Post, Telegram } from "./telegram.js";
 
+import { createNotifier } from "./notifier.js";
 import { openOwnerFiles } from "./owner-files.js";
 import { createPostPipeline } from "./pipeline.js";
 import {
@@ -28,13 +29,26 @@ async function isProcessed(processedPosts: ProcessedPosts, listing: Post): Promi
   return !handled;
 }
 
+type TestPipelineOptions = Omit<PostPipelineOptions, "downloadPhoto" | "notifier"> & {
+  telegram: TelegramSpy;
+};
+
+/** A pipeline whose Notifier and photo downloads go through `telegram`. */
+function createTestPipeline({ telegram, ...options }: TestPipelineOptions): PostPipeline {
+  return createPostPipeline({
+    ...options,
+    downloadPhoto: telegram.downloadPhoto,
+    notifier: createNotifier(telegram),
+  });
+}
+
 /** A stub Evaluator that returns `verdict`; tests using it exercise the pipeline alone. */
 function stubEvaluator(verdict?: Verdict): {
   evaluate: ReturnType<typeof vi.fn<Evaluator["evaluate"]>>;
 } {
   return {
     evaluate: vi.fn<Evaluator["evaluate"]>(() =>
-      Promise.resolve(verdict ?? { match: true, notes: "Looks good" }),
+      Promise.resolve(verdict ?? { kind: "match", notes: "Looks good" }),
     ),
   };
 }
@@ -57,16 +71,6 @@ function failingTelegram(): TelegramSpy {
   return telegram;
 }
 
-function reporterSpy(): ErrorReporter & {
-  captureException: ReturnType<typeof vi.fn<ErrorReporter["captureException"]>>;
-} {
-  return {
-    captureException: vi.fn<ErrorReporter["captureException"]>(),
-    enabled: true,
-    run: async (_link, operation) => operation(),
-  };
-}
-
 /** An Evaluator whose runs each block until the test releases them by Post ID. */
 function blockingEvaluator(): {
   evaluator: { evaluate: ReturnType<typeof vi.fn<Evaluator["evaluate"]>> };
@@ -85,7 +89,7 @@ function blockingEvaluator(): {
       releases.set(id, resolve);
     });
     active -= 1;
-    return { match, notes: `Post ${id}` };
+    return { kind: match ? "match" : "no-match", notes: `Post ${id}` };
   });
   return {
     evaluator: { evaluate },
@@ -104,7 +108,7 @@ describe("post pipeline", () => {
     const processedPosts = memoryProcessedPosts();
     const evaluator = stubEvaluator();
     const telegram = telegramSpy();
-    const pipeline = createPostPipeline({
+    const pipeline = createTestPipeline({
       evaluator,
       ownerFiles: readableOwnerFiles(),
       processedPosts,
@@ -119,57 +123,6 @@ describe("post pipeline", () => {
     expect(log).toHaveBeenCalledWith("post https://t.me/example/80: skipped — 1 photo, no text");
   });
 
-  it("still notifies and marks the Post when the Evaluator throws", async () => {
-    expect.hasAssertions();
-    quiet("error");
-    quiet("log");
-    const errorReporter = reporterSpy();
-    const processedPosts = memoryProcessedPosts();
-    const evaluator = {
-      evaluate: vi.fn<Evaluator["evaluate"]>(() => Promise.reject(new Error("evaluator exploded"))),
-    };
-    const telegram = telegramSpy();
-    const pipeline = createPostPipeline({
-      errorReporter,
-      evaluator,
-      ownerFiles: readableOwnerFiles(),
-      processedPosts,
-      telegram,
-    });
-
-    await pipeline.process(post(77));
-
-    expect(telegram.sendToMe).toHaveBeenCalledWith(
-      "https://t.me/example/77\n⚠️ couldn't evaluate: Error: evaluator exploded",
-    );
-    await expect(isProcessed(processedPosts, post(77))).resolves.toBe(true);
-    expect(errorReporter.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      phase: "evaluation",
-      postLink: "https://t.me/example/77",
-    });
-  });
-
-  it("reports a failed notification with the Post link without blocking the queue", async () => {
-    expect.hasAssertions();
-    quiet("error");
-    quiet("log");
-    const errorReporter = reporterSpy();
-    const pipeline = createPostPipeline({
-      errorReporter,
-      evaluator: stubEvaluator(),
-      ownerFiles: readableOwnerFiles(),
-      processedPosts: memoryProcessedPosts(),
-      telegram: failingTelegram(),
-    });
-
-    await expect(pipeline.process(post(54))).resolves.toBeUndefined();
-
-    expect(errorReporter.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      phase: "notification",
-      postLink: "https://t.me/example/54",
-    });
-  });
-
   it("evaluates Listings, notifies Matches, and drops other Posts", async () => {
     expect.hasAssertions();
     const log = quiet("log");
@@ -178,7 +131,7 @@ describe("post pipeline", () => {
       { match: false, notes: "Too expensive" },
     );
     const telegram = telegramSpy();
-    const pipeline = createPostPipeline({
+    const pipeline = createTestPipeline({
       evaluator: testEvaluator(model),
       ownerFiles: readableOwnerFiles(),
       processedPosts: memoryProcessedPosts(),
@@ -202,7 +155,7 @@ describe("post pipeline", () => {
     quiet("log");
     const model = verdictModel({ match: true, notes: "Looks good" });
     const telegram = telegramSpy();
-    const pipeline = createPostPipeline({
+    const pipeline = createTestPipeline({
       evaluator: testEvaluator(model),
       ownerFiles: readableOwnerFiles(),
       processedPosts: memoryProcessedPosts(),
@@ -227,7 +180,7 @@ describe("post pipeline", () => {
     const processedPosts = memoryProcessedPosts();
     const telegram = telegramSpy();
     telegram.downloadPhoto.mockRejectedValue(new Error("expired file reference"));
-    const pipeline = createPostPipeline({
+    const pipeline = createTestPipeline({
       evaluator: testEvaluator(model),
       ownerFiles: readableOwnerFiles(),
       processedPosts,
@@ -246,7 +199,7 @@ describe("post pipeline", () => {
     quiet("log");
     const processedPosts = memoryProcessedPosts();
     const { evaluator, release, running, started } = blockingEvaluator();
-    const pipeline = createPostPipeline({
+    const pipeline = createTestPipeline({
       concurrency: 2,
       evaluator,
       ownerFiles: readableOwnerFiles(),
@@ -283,7 +236,7 @@ describe("post pipeline", () => {
     const processedPosts = memoryProcessedPosts();
     const { evaluator, release, started } = blockingEvaluator();
     const telegram = telegramSpy();
-    const pipeline = createPostPipeline({
+    const pipeline = createTestPipeline({
       concurrency: 2,
       evaluator,
       ownerFiles: readableOwnerFiles(),
@@ -308,7 +261,7 @@ describe("post pipeline", () => {
     expect.hasAssertions();
     quiet("log");
     const { evaluator, release, started } = blockingEvaluator();
-    const pipeline = createPostPipeline({
+    const pipeline = createTestPipeline({
       concurrency: 2,
       evaluator,
       ownerFiles: readableOwnerFiles(),
@@ -338,7 +291,7 @@ describe("post pipeline", () => {
     quiet("log");
     const evaluator = stubEvaluator();
     const telegram = failingTelegram();
-    const pipeline = createPostPipeline({
+    const pipeline = createTestPipeline({
       evaluator,
       ownerFiles: readableOwnerFiles(),
       processedPosts: memoryProcessedPosts(),
@@ -360,7 +313,7 @@ describe("post pipeline", () => {
     const processedPosts = memoryProcessedPosts();
     const evaluator = stubEvaluator();
     const telegram = telegramSpy();
-    const pipeline = createPostPipeline({ evaluator, ownerFiles, processedPosts, telegram });
+    const pipeline = createTestPipeline({ evaluator, ownerFiles, processedPosts, telegram });
     rmSync(files.criteriaPath);
 
     await pipeline.process(post(41));
@@ -380,7 +333,7 @@ describe("post pipeline", () => {
     const evaluator = stubEvaluator();
     const telegram = telegramSpy();
     telegram.sendToMe.mockRejectedValueOnce(new Error("Saved Messages unavailable"));
-    const pipeline = createPostPipeline({ evaluator, ownerFiles, processedPosts, telegram });
+    const pipeline = createTestPipeline({ evaluator, ownerFiles, processedPosts, telegram });
     writeFileSync(files.criteriaPath, "Want a quieter street.\n");
 
     await pipeline.process(post(42));

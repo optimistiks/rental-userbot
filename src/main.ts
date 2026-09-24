@@ -10,13 +10,13 @@ import { readLoginSettings, readSettings } from "./config.js";
 import { errorMessage } from "./errors.js";
 import { createEvaluator } from "./evaluator.js";
 import { createLocator } from "./locate.js";
+import { createNotifier } from "./notifier.js";
 import { openOwnerFiles } from "./owner-files.js";
 import { createPostPipeline } from "./pipeline.js";
 import { openProcessedPosts } from "./processed-posts.js";
 import { createSentryReporter } from "./sentry.js";
 import { acquireSessionLock } from "./session-lock.js";
 import { createTelegramAdapter, createTelegramClient, daemonStartParams } from "./telegram.js";
-import { watchingMessage } from "./watchlist.js";
 
 type ManagedClient = TelegramClientLike &
   SessionClient & {
@@ -56,19 +56,18 @@ async function runDaemon(
     client = makeClient(settings);
     await client.start(daemonStartParams);
     const telegram = createTelegramAdapter(client, ownerFiles.watchedChannelIds);
-    const startupNotice = `🟢 started, ${watchingMessage(ownerFiles.watchedAtStartup)}`;
-    console.log(`startup: ${startupNotice}`);
-    await telegram.sendToMe(startupNotice);
+    const notifier = createNotifier(telegram, errorReporter);
+    await notifier.started(ownerFiles.watchedAtStartup);
     const pipeline = createPostPipeline({
       concurrency: settings.evaluationConcurrency,
-      errorReporter,
+      downloadPhoto: telegram.downloadPhoto,
       evaluator: createEvaluator(settings, {
         errorReporter,
         locator: createLocator(settings),
       }),
+      notifier,
       ownerFiles,
       processedPosts,
-      telegram,
     });
     telegram.onPost((post) => {
       /* The onPost callback returns void, so the pipeline promise is deliberately
