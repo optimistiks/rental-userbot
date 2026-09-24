@@ -4,8 +4,6 @@ import { TelegramClient, networkMiddlewares } from "@mtcute/node";
 
 import type { LoginSettings } from "./config.js";
 
-import { MAX_PHOTOS } from "./config.js";
-
 /**
  * Stamped on every write to Saved Messages so the owner can filter what the bot
  * wrote out of a chat they also use by hand. Telegram ends a hashtag at the
@@ -126,7 +124,7 @@ function createTelegramAdapter(
       chatId: firstMessage.chat.id,
       link: firstMessage.link,
       messageIds: postMessages.map((message) => message.id),
-      photos: postMessages.flatMap((message) => photoOf(message)).slice(0, MAX_PHOTOS),
+      photos: postMessages.flatMap((message) => photoOf(message)),
       text: postMessages
         .map((message) => message.text)
         .filter((text) => text !== "")

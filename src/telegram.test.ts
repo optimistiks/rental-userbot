@@ -196,7 +196,7 @@ describe("telegram adapter", () => {
     expect(client.downloadAsBuffer).toHaveBeenCalledTimes(3);
   });
 
-  it("keeps at most six photos in album message order", () => {
+  it("keeps every photo of an album; the Listing decides how many to use", () => {
     expect.hasAssertions();
     const { handler, messageGroup } = harness();
 
@@ -207,7 +207,7 @@ describe("telegram adapter", () => {
     );
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0][0].photos).toHaveLength(6);
+    expect(handler.mock.calls[0][0].photos).toHaveLength(7);
   });
 
   it("includes a photo on a single-message Post and skips non-photo media", () => {

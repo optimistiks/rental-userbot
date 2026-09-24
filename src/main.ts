@@ -63,7 +63,6 @@ async function runDaemon(
       concurrency: settings.evaluationConcurrency,
       errorReporter,
       evaluator: createEvaluator(settings, {
-        downloadPhoto: telegram.downloadPhoto,
         errorReporter,
         locator: createLocator(settings),
       }),

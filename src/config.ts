@@ -1,8 +1,6 @@
 type ProcessEnv = NodeJS.ProcessEnv;
 
 const BOT_DATABASE_PATH = "data/bot.sqlite";
-const MAX_PHOTOS = 6;
-const MIN_LISTING_PHOTOS = 3;
 const SESSION_LOCK_PATH = "data/session.lock";
 
 const LEVELS = ["low", "medium", "high"] as const;
@@ -86,8 +84,6 @@ function readLoginSettings(env: ProcessEnv = process.env): LoginSettings {
 
 export {
   BOT_DATABASE_PATH,
-  MAX_PHOTOS,
-  MIN_LISTING_PHOTOS,
   SESSION_LOCK_PATH,
   type Level,
   type Settings,

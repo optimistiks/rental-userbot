@@ -11,6 +11,7 @@ import { onTestFinished, vi } from "vitest";
 
 import type { Settings } from "./config.js";
 import type { Evaluator, EvaluatorOptions } from "./evaluator.js";
+import type { Listing } from "./listing.js";
 import type { OwnerFileContents, OwnerFilePaths, OwnerFiles } from "./owner-files.js";
 import type { ProcessedPosts } from "./processed-posts.js";
 import type { Post } from "./telegram.js";
@@ -41,6 +42,17 @@ function post(id: number, overrides: Partial<Post> = {}): Post {
     link: `https://t.me/example/${id}`,
     messageIds: [id],
     photos: ["photo-1", "photo-2", "photo-3"],
+    text: "Flat for rent",
+    ...overrides,
+  };
+}
+
+/** A Listing from the watched channel: text and three photos that download at once. */
+function listing(id: number, overrides: Partial<Listing> = {}): Listing {
+  return {
+    chatId: WATCHED_CHANNEL_ID,
+    link: `https://t.me/example/${id}`,
+    photos: () => Promise.resolve([new Uint8Array([1]), new Uint8Array([2]), new Uint8Array([3])]),
     text: "Flat for rent",
     ...overrides,
   };
@@ -140,14 +152,13 @@ function verdictModel(...verdicts: { match: boolean; notes: string }[]): MockLan
   return new MockLanguageModelV4({ doGenerate: results.length === 1 ? results[0] : results });
 }
 
-/** A real Evaluator whose photo downloads always work and whose Locator finds nothing. */
+/** A real Evaluator whose Locator finds nothing. */
 function testEvaluator(
   model: LanguageModel,
   options: Partial<EvaluatorOptions> = {},
   settings: Settings = testSettings(),
 ): Evaluator {
   return createEvaluator(settings, {
-    downloadPhoto: () => Promise.resolve(new Uint8Array([0])),
     locator: { locate: () => Promise.resolve([]) },
     model,
     ...options,
@@ -158,6 +169,7 @@ export {
   WATCHED_CHANNEL_ID,
   usage,
   post,
+  listing,
   quiet,
   temporaryDirectory,
   zoneCollection,

@@ -2,13 +2,13 @@ import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 
 import type { EvaluationFailure, RetryPolicy } from "./evaluator.js";
+import type { Listing } from "./listing.js";
 import type { Locator } from "./locate.js";
 import type { ErrorReporter } from "./sentry.js";
-import type { PhotoRef } from "./telegram.js";
 
 import {
+  listing,
   ownerFileContents,
-  post,
   quiet,
   testEvaluator,
   testSettings,
@@ -104,7 +104,7 @@ describe("evaluator", () => {
       retryPolicy: { attempts: 1, backoffsMs: [], maxSteps: 8, timeoutMs: 100 },
     });
 
-    await expect(evaluator.evaluate(post(53), ownerFileContents())).resolves.toMatchObject({
+    await expect(evaluator.evaluate(listing(53), ownerFileContents())).resolves.toMatchObject({
       kind: "evaluation-failure",
     });
 
@@ -143,7 +143,7 @@ describe("evaluator", () => {
     const evaluator = testEvaluator(model, { locator: { locate } });
 
     await expect(
-      evaluator.evaluate(post(52, { text: "Flat at Gorgasali 33" }), ownerFiles),
+      evaluator.evaluate(listing(52, { text: "Flat at Gorgasali 33" }), ownerFiles),
     ).resolves.toStrictEqual({ match: true, notes: "In Old Batumi" });
 
     expect(locate).toHaveBeenCalledWith("Gorgasali 33", ownerFiles.zone, expect.anything());
@@ -168,7 +168,7 @@ describe("evaluator", () => {
       locator: { locate: () => Promise.reject(new Error("provider unavailable")) },
     });
 
-    await expect(evaluator.evaluate(post(1), ownerFileContents())).resolves.toStrictEqual({
+    await expect(evaluator.evaluate(listing(1), ownerFileContents())).resolves.toStrictEqual({
       match: false,
       notes: "Location unclear",
     });
@@ -188,13 +188,13 @@ describe("evaluator", () => {
 
     await expect(
       evaluator.evaluate(
-        post(1, { text: "First Post" }),
+        listing(1, { text: "First Post" }),
         ownerFileContents({ criteria: "Criteria version one", prompt: "Prompt version one" }),
       ),
     ).resolves.toStrictEqual({ match: true, notes: "First notes" });
     await expect(
       evaluator.evaluate(
-        post(2, { text: "Second Post" }),
+        listing(2, { text: "Second Post" }),
         ownerFileContents({ criteria: "Criteria version two", prompt: "Prompt version two" }),
       ),
     ).resolves.toStrictEqual({ match: false, notes: "Second notes" });
@@ -210,29 +210,28 @@ describe("evaluator", () => {
     expect(secondPrompt).toContain("Second Post");
   });
 
-  it("downloads photos once and sends them after the Post text", async () => {
+  it("fetches the Listing's photos once and sends them after its text", async () => {
     expect.hasAssertions();
     quiet("log");
-    const downloadPhoto = vi
-      .fn<(photo: PhotoRef) => Promise<Uint8Array>>()
-      .mockResolvedValueOnce(new Uint8Array([1, 2]))
-      .mockResolvedValueOnce(new Uint8Array([3, 4]));
+    const photos = vi.fn<Listing["photos"]>(() =>
+      Promise.resolve([new Uint8Array([1, 2]), new Uint8Array([3, 4])]),
+    );
     const model = verdictModel({ match: true, notes: "Looks good" });
     const evaluator = testEvaluator(
       model,
-      { downloadPhoto },
-      { ...testSettings(), mediaResolution: "medium", thinkingLevel: "high" },
+      {},
+      {
+        ...testSettings(),
+        mediaResolution: "medium",
+        thinkingLevel: "high",
+      },
     );
 
     await expect(
-      evaluator.evaluate(
-        post(50, { photos: ["first", "second"], text: "Flat with photos" }),
-        ownerFileContents(),
-      ),
+      evaluator.evaluate(listing(50, { photos, text: "Flat with photos" }), ownerFileContents()),
     ).resolves.toStrictEqual({ match: true, notes: "Looks good" });
 
-    expect(downloadPhoto).toHaveBeenNthCalledWith(1, "first");
-    expect(downloadPhoto).toHaveBeenNthCalledWith(2, "second");
+    expect(photos).toHaveBeenCalledTimes(1);
 
     const [{ prompt }] = model.doGenerateCalls;
     expect(model.doGenerateCalls[0].providerOptions).toStrictEqual({
@@ -274,7 +273,10 @@ describe("evaluation failures", () => {
     });
 
     await expect(
-      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(1), ownerFileContents()),
+      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(
+        listing(1),
+        ownerFileContents(),
+      ),
     ).resolves.toStrictEqual({
       error: "Error: gateway failed",
       kind: "evaluation-failure",
@@ -300,7 +302,10 @@ describe("evaluation failures", () => {
     });
 
     await expect(
-      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(post(2), ownerFileContents()),
+      testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(
+        listing(2),
+        ownerFileContents(),
+      ),
     ).resolves.toStrictEqual({ match: true, notes: "Recovered" });
     expect(model.doGenerateCalls).toHaveLength(2);
   });
@@ -321,7 +326,7 @@ describe("evaluation failures", () => {
     });
 
     const verdict = await testEvaluator(model, { retryPolicy: retryPolicy() }).evaluate(
-      post(3),
+      listing(3),
       ownerFileContents(),
     );
 
@@ -339,7 +344,7 @@ describe("evaluation failures", () => {
 
     await expect(
       testEvaluator(model, { retryPolicy: retryPolicy(10) }).evaluate(
-        post(31),
+        listing(31),
         ownerFileContents(),
       ),
     ).resolves.toMatchObject({

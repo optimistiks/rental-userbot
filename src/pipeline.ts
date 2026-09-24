@@ -1,11 +1,12 @@
 import type { EvaluationContext, EvaluationFailure, Evaluator, Verdict } from "./evaluator.js";
+import type { Listing } from "./listing.js";
 import type { OwnerFileContents, OwnerFiles } from "./owner-files.js";
 import type { ProcessedPosts } from "./processed-posts.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { Post, Telegram } from "./telegram.js";
 
-import { MIN_LISTING_PHOTOS } from "./config.js";
 import { evaluationFailure } from "./evaluator.js";
+import { readListing } from "./listing.js";
 import { createSentryReporter } from "./sentry.js";
 
 interface PostPipeline {
@@ -15,7 +16,7 @@ interface PostPipeline {
 /** Posts reach the pipeline already filtered to the Watchlist by the Telegram adapter. */
 interface PostPipelineOptions {
   evaluator: Evaluator;
-  telegram: Pick<Telegram, "sendToMe">;
+  telegram: Pick<Telegram, "sendToMe" | "downloadPhoto">;
   processedPosts: Pick<ProcessedPosts, "once">;
   ownerFiles: Pick<OwnerFiles, "read">;
   errorReporter?: ErrorReporter;
@@ -51,7 +52,7 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
   }
 
   async function runQueued(
-    post: Post,
+    listing: Listing,
     ownerFiles: OwnerFileContents,
     noticeSend: Promise<void>,
   ): Promise<void> {
@@ -60,7 +61,7 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
     try {
       await noticeSend;
       await processQueuedPost(
-        post,
+        listing,
         ownerFiles,
         { waitedMs: Date.now() - queuedAt, waiting: slotWaiters.length },
         options,
@@ -76,11 +77,16 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
       const { contents, notice } = options.ownerFiles.read();
       const noticeSend = deliverNotice(post, notice, options, errorReporter);
 
-      if (contents !== undefined && isListing(post)) {
-        // Claimed now, before waiting for a slot, so a duplicate never queues behind it.
-        await options.processedPosts.once(post, () => runQueued(post, contents, noticeSend));
-      } else if (contents !== undefined) {
-        console.log(`post ${post.link}: skipped — ${describeSkip(post)}`);
+      if (contents !== undefined) {
+        const read = readListing(post, options.telegram.downloadPhoto);
+        if ("skipped" in read) {
+          console.log(`post ${post.link}: skipped — ${read.skipped}`);
+        } else {
+          // Claimed now, before waiting for a slot, so a duplicate never queues behind it.
+          await options.processedPosts.once(post, () =>
+            runQueued(read.listing, contents, noticeSend),
+          );
+        }
       }
 
       await noticeSend;
@@ -89,7 +95,7 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
 }
 
 async function processQueuedPost(
-  post: Post,
+  listing: Listing,
   ownerFiles: OwnerFileContents,
   context: EvaluationContext,
   options: PostPipelineOptions,
@@ -99,42 +105,42 @@ async function processQueuedPost(
   // Still reach the Notifier and be marked processed, so nothing is silently lost.
   let verdict: Verdict;
   try {
-    verdict = await options.evaluator.evaluate(post, ownerFiles, context);
+    verdict = await options.evaluator.evaluate(listing, ownerFiles, context);
   } catch (error) {
-    console.error(`post ${post.link}: evaluation threw`, error);
-    errorReporter.captureException(error, { phase: "evaluation", postLink: post.link });
+    console.error(`post ${listing.link}: evaluation threw`, error);
+    errorReporter.captureException(error, { phase: "evaluation", postLink: listing.link });
     verdict = evaluationFailure(error);
   }
 
   try {
-    const notification = notificationFor(post, verdict);
+    const notification = notificationFor(listing, verdict);
     if (notification !== undefined) {
       await options.telegram.sendToMe(notification);
     }
   } catch (error) {
-    console.error(`post ${post.link}: failed to send notification`, error);
-    errorReporter.captureException(error, { phase: "notification", postLink: post.link });
+    console.error(`post ${listing.link}: failed to send notification`, error);
+    errorReporter.captureException(error, { phase: "notification", postLink: listing.link });
   }
 
-  logVerdict(post, verdict);
+  logVerdict(listing, verdict);
 }
 
-function logVerdict(post: Post, verdict: Verdict): void {
+function logVerdict(listing: Pick<Listing, "link">, verdict: Verdict): void {
   if (isEvaluationFailure(verdict)) {
-    console.log(`post ${post.link}: Evaluation failure — ${verdict.error}`);
+    console.log(`post ${listing.link}: Evaluation failure — ${verdict.error}`);
     return;
   }
 
   const label = verdict.match ? "Match" : "No match";
-  console.log(`post ${post.link}: ${label} — ${verdict.notes}`);
+  console.log(`post ${listing.link}: ${label} — ${verdict.notes}`);
 }
 
-function notificationFor(post: Post, verdict: Verdict): string | undefined {
+function notificationFor(listing: Pick<Listing, "link">, verdict: Verdict): string | undefined {
   if (isEvaluationFailure(verdict)) {
-    return `${post.link}\n⚠️ couldn't evaluate: ${verdict.error}`;
+    return `${listing.link}\n⚠️ couldn't evaluate: ${verdict.error}`;
   }
 
-  return verdict.match ? `${post.link}\n${verdict.notes}` : undefined;
+  return verdict.match ? `${listing.link}\n${verdict.notes}` : undefined;
 }
 
 async function deliverNotice(
@@ -153,16 +159,6 @@ async function deliverNotice(
     console.error(`post ${post.link}: failed to send Notice`, error);
     errorReporter.captureException(error, { phase: "notice", postLink: post.link });
   }
-}
-
-function isListing(post: Post): boolean {
-  return post.text.trim() !== "" && post.photos.length >= MIN_LISTING_PHOTOS;
-}
-
-function describeSkip(post: Post): string {
-  const count = post.photos.length;
-  const photos = `${count} photo${count === 1 ? "" : "s"}`;
-  return post.text.trim() === "" ? `${photos}, no text` : photos;
 }
 
 function isEvaluationFailure(verdict: Verdict): verdict is EvaluationFailure {

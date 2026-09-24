@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Evaluator, Verdict } from "./evaluator.js";
 import type { ProcessedPosts } from "./processed-posts.js";
 import type { ErrorReporter } from "./sentry.js";
-import type { PhotoRef, Post, Telegram } from "./telegram.js";
+import type { Post, Telegram } from "./telegram.js";
 
 import { openOwnerFiles } from "./owner-files.js";
 import { createPostPipeline } from "./pipeline.js";
@@ -39,16 +39,22 @@ function stubEvaluator(verdict?: Verdict): {
   };
 }
 
-function telegramSpy(): { sendToMe: ReturnType<typeof vi.fn<Telegram["sendToMe"]>> } {
-  return { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
+interface TelegramSpy {
+  downloadPhoto: ReturnType<typeof vi.fn<Telegram["downloadPhoto"]>>;
+  sendToMe: ReturnType<typeof vi.fn<Telegram["sendToMe"]>>;
 }
 
-function failingTelegram(): { sendToMe: ReturnType<typeof vi.fn<Telegram["sendToMe"]>> } {
+function telegramSpy(): TelegramSpy {
   return {
-    sendToMe: vi.fn<Telegram["sendToMe"]>(() =>
-      Promise.reject(new Error("Saved Messages unavailable")),
-    ),
+    downloadPhoto: vi.fn<Telegram["downloadPhoto"]>(() => Promise.resolve(new Uint8Array([1]))),
+    sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()),
   };
+}
+
+function failingTelegram(): TelegramSpy {
+  const telegram = telegramSpy();
+  telegram.sendToMe.mockRejectedValue(new Error("Saved Messages unavailable"));
+  return telegram;
 }
 
 function reporterSpy(): ErrorReporter & {
@@ -92,33 +98,26 @@ function blockingEvaluator(): {
 }
 
 describe("post pipeline", () => {
-  it.each([
-    ["no text and one photo", "", ["photo-1"], "1 photo, no text"],
-    ["text but fewer than three photos", "Сдается квартира Батуми", ["photo-1"], "1 photo"],
-    ["three photos but no text", "", ["photo-1", "photo-2", "photo-3"], "3 photos, no text"],
-  ])(
-    "ignores a Post with %s and does not mark it processed",
-    async (_case, text, photos: PhotoRef[], skip) => {
-      expect.hasAssertions();
-      const log = quiet("log");
-      const processedPosts = memoryProcessedPosts();
-      const evaluator = stubEvaluator();
-      const telegram = telegramSpy();
-      const pipeline = createPostPipeline({
-        evaluator,
-        ownerFiles: readableOwnerFiles(),
-        processedPosts,
-        telegram,
-      });
+  it("skips a Post that is not a Listing without marking it processed", async () => {
+    expect.hasAssertions();
+    const log = quiet("log");
+    const processedPosts = memoryProcessedPosts();
+    const evaluator = stubEvaluator();
+    const telegram = telegramSpy();
+    const pipeline = createPostPipeline({
+      evaluator,
+      ownerFiles: readableOwnerFiles(),
+      processedPosts,
+      telegram,
+    });
 
-      await pipeline.process(post(80, { photos, text }));
+    await pipeline.process(post(80, { photos: ["photo-1"], text: "" }));
 
-      expect(evaluator.evaluate).not.toHaveBeenCalled();
-      expect(telegram.sendToMe).not.toHaveBeenCalled();
-      await expect(isProcessed(processedPosts, post(80))).resolves.toBe(false);
-      expect(log).toHaveBeenCalledWith(`post https://t.me/example/80: skipped — ${skip}`);
-    },
-  );
+    expect(evaluator.evaluate).not.toHaveBeenCalled();
+    expect(telegram.sendToMe).not.toHaveBeenCalled();
+    await expect(isProcessed(processedPosts, post(80))).resolves.toBe(false);
+    expect(log).toHaveBeenCalledWith("post https://t.me/example/80: skipped — 1 photo, no text");
+  });
 
   it("still notifies and marks the Post when the Evaluator throws", async () => {
     expect.hasAssertions();
@@ -202,12 +201,9 @@ describe("post pipeline", () => {
     expect.hasAssertions();
     quiet("log");
     const model = verdictModel({ match: true, notes: "Looks good" });
-    const downloadPhoto = vi.fn<(photo: PhotoRef) => Promise<Uint8Array>>(() =>
-      Promise.resolve(new Uint8Array([1])),
-    );
     const telegram = telegramSpy();
     const pipeline = createPostPipeline({
-      evaluator: testEvaluator(model, { downloadPhoto }),
+      evaluator: testEvaluator(model),
       ownerFiles: readableOwnerFiles(),
       processedPosts: memoryProcessedPosts(),
       telegram,
@@ -216,7 +212,7 @@ describe("post pipeline", () => {
     await pipeline.process(post(60, { albumId: "album-8", messageIds: [60, 61] }));
     await pipeline.process(post(62, { albumId: "album-8", text: "Late album part" }));
 
-    expect(downloadPhoto).toHaveBeenCalledTimes(3);
+    expect(telegram.downloadPhoto).toHaveBeenCalledTimes(3);
     expect(model.doGenerateCalls).toHaveLength(1);
     expect(telegram.sendToMe).toHaveBeenCalledExactlyOnceWith(
       "https://t.me/example/60\nLooks good",
@@ -230,10 +226,9 @@ describe("post pipeline", () => {
     const model = verdictModel({ match: false, notes: "No photos left" });
     const processedPosts = memoryProcessedPosts();
     const telegram = telegramSpy();
+    telegram.downloadPhoto.mockRejectedValue(new Error("expired file reference"));
     const pipeline = createPostPipeline({
-      evaluator: testEvaluator(model, {
-        downloadPhoto: () => Promise.reject(new Error("expired file reference")),
-      }),
+      evaluator: testEvaluator(model),
       ownerFiles: readableOwnerFiles(),
       processedPosts,
       telegram,
