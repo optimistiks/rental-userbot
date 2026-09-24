@@ -2,13 +2,14 @@ import { rmSync, writeFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Evaluator, Verdict } from "./evaluator.js";
+import type { ProcessedPosts } from "./processed-posts.js";
 import type { ErrorReporter } from "./sentry.js";
-import type { PhotoRef, Telegram } from "./telegram.js";
+import type { PhotoRef, Post, Telegram } from "./telegram.js";
 
 import { openOwnerFiles } from "./owner-files.js";
 import { createPostPipeline } from "./pipeline.js";
 import {
-  memoryStore,
+  memoryProcessedPosts,
   post,
   quiet,
   readableOwnerFiles,
@@ -16,6 +17,16 @@ import {
   verdictModel,
   writeOwnerFiles,
 } from "./test-support.js";
+
+/** Asks through the interface: a Post is processed when `once` turns it away. Marks it as a side effect. */
+async function isProcessed(processedPosts: ProcessedPosts, listing: Post): Promise<boolean> {
+  let handled = false;
+  await processedPosts.once(listing, () => {
+    handled = true;
+    return Promise.resolve();
+  });
+  return !handled;
+}
 
 /** A stub Evaluator that returns `verdict`; tests using it exercise the pipeline alone. */
 function stubEvaluator(verdict?: Verdict): {
@@ -90,13 +101,13 @@ describe("post pipeline", () => {
     async (_case, text, photos: PhotoRef[], skip) => {
       expect.hasAssertions();
       const log = quiet("log");
-      const dedupeStore = memoryStore();
+      const processedPosts = memoryProcessedPosts();
       const evaluator = stubEvaluator();
       const telegram = telegramSpy();
       const pipeline = createPostPipeline({
-        dedupeStore,
         evaluator,
         ownerFiles: readableOwnerFiles(),
+        processedPosts,
         telegram,
       });
 
@@ -104,7 +115,7 @@ describe("post pipeline", () => {
 
       expect(evaluator.evaluate).not.toHaveBeenCalled();
       expect(telegram.sendToMe).not.toHaveBeenCalled();
-      expect(dedupeStore.isProcessed("-1001234567890:80")).toBe(false);
+      await expect(isProcessed(processedPosts, post(80))).resolves.toBe(false);
       expect(log).toHaveBeenCalledWith(`post https://t.me/example/80: skipped — ${skip}`);
     },
   );
@@ -114,16 +125,16 @@ describe("post pipeline", () => {
     quiet("error");
     quiet("log");
     const errorReporter = reporterSpy();
-    const dedupeStore = memoryStore();
+    const processedPosts = memoryProcessedPosts();
     const evaluator = {
       evaluate: vi.fn<Evaluator["evaluate"]>(() => Promise.reject(new Error("evaluator exploded"))),
     };
     const telegram = telegramSpy();
     const pipeline = createPostPipeline({
-      dedupeStore,
       errorReporter,
       evaluator,
       ownerFiles: readableOwnerFiles(),
+      processedPosts,
       telegram,
     });
 
@@ -132,7 +143,7 @@ describe("post pipeline", () => {
     expect(telegram.sendToMe).toHaveBeenCalledWith(
       "https://t.me/example/77\n⚠️ couldn't evaluate: Error: evaluator exploded",
     );
-    expect(dedupeStore.isProcessed("-1001234567890:77")).toBe(true);
+    await expect(isProcessed(processedPosts, post(77))).resolves.toBe(true);
     expect(errorReporter.captureException).toHaveBeenCalledWith(expect.any(Error), {
       phase: "evaluation",
       postLink: "https://t.me/example/77",
@@ -145,10 +156,10 @@ describe("post pipeline", () => {
     quiet("log");
     const errorReporter = reporterSpy();
     const pipeline = createPostPipeline({
-      dedupeStore: memoryStore(),
       errorReporter,
       evaluator: stubEvaluator(),
       ownerFiles: readableOwnerFiles(),
+      processedPosts: memoryProcessedPosts(),
       telegram: failingTelegram(),
     });
 
@@ -169,9 +180,9 @@ describe("post pipeline", () => {
     );
     const telegram = telegramSpy();
     const pipeline = createPostPipeline({
-      dedupeStore: memoryStore(),
       evaluator: testEvaluator(model),
       ownerFiles: readableOwnerFiles(),
+      processedPosts: memoryProcessedPosts(),
       telegram,
     });
 
@@ -196,9 +207,9 @@ describe("post pipeline", () => {
     );
     const telegram = telegramSpy();
     const pipeline = createPostPipeline({
-      dedupeStore: memoryStore(),
       evaluator: testEvaluator(model, { downloadPhoto }),
       ownerFiles: readableOwnerFiles(),
+      processedPosts: memoryProcessedPosts(),
       telegram,
     });
 
@@ -217,34 +228,34 @@ describe("post pipeline", () => {
     quiet("log");
     quiet("warn");
     const model = verdictModel({ match: false, notes: "No photos left" });
-    const dedupeStore = memoryStore();
+    const processedPosts = memoryProcessedPosts();
     const telegram = telegramSpy();
     const pipeline = createPostPipeline({
-      dedupeStore,
       evaluator: testEvaluator(model, {
         downloadPhoto: () => Promise.reject(new Error("expired file reference")),
       }),
       ownerFiles: readableOwnerFiles(),
+      processedPosts,
       telegram,
     });
 
     await pipeline.process(post(70));
 
     expect(model.doGenerateCalls).toHaveLength(1);
-    expect(dedupeStore.isProcessed("-1001234567890:70")).toBe(true);
+    await expect(isProcessed(processedPosts, post(70))).resolves.toBe(true);
     expect(telegram.sendToMe).not.toHaveBeenCalled();
   });
 
   it("evaluates up to the configured number of Listings at once, starting them in arrival order", async () => {
     expect.hasAssertions();
     quiet("log");
-    const dedupeStore = memoryStore();
+    const processedPosts = memoryProcessedPosts();
     const { evaluator, release, running, started } = blockingEvaluator();
     const pipeline = createPostPipeline({
       concurrency: 2,
-      dedupeStore,
       evaluator,
       ownerFiles: readableOwnerFiles(),
+      processedPosts,
       telegram: telegramSpy(),
     });
     const processed = [11, 12, 13, 14].map((id) => pipeline.process(post(id)));
@@ -268,20 +279,20 @@ describe("post pipeline", () => {
     release(14);
     await Promise.all(processed);
 
-    expect(dedupeStore.isProcessed("-1001234567890:14")).toBe(true);
+    await expect(isProcessed(processedPosts, post(14))).resolves.toBe(true);
   });
 
   it("notifies a Match as soon as it is ready, even while an older Listing is still running", async () => {
     expect.hasAssertions();
     quiet("log");
-    const dedupeStore = memoryStore();
+    const processedPosts = memoryProcessedPosts();
     const { evaluator, release, started } = blockingEvaluator();
     const telegram = telegramSpy();
     const pipeline = createPostPipeline({
       concurrency: 2,
-      dedupeStore,
       evaluator,
       ownerFiles: readableOwnerFiles(),
+      processedPosts,
       telegram,
     });
     const older = pipeline.process(post(21));
@@ -294,7 +305,6 @@ describe("post pipeline", () => {
     await newer;
 
     expect(telegram.sendToMe).toHaveBeenCalledExactlyOnceWith("https://t.me/example/22\nPost 22");
-    expect(dedupeStore.isProcessed("-1001234567890:21")).toBe(false);
     release(21);
     await older;
   });
@@ -305,9 +315,9 @@ describe("post pipeline", () => {
     const { evaluator, release, started } = blockingEvaluator();
     const pipeline = createPostPipeline({
       concurrency: 2,
-      dedupeStore: memoryStore(),
       evaluator,
       ownerFiles: readableOwnerFiles(),
+      processedPosts: memoryProcessedPosts(),
       telegram: telegramSpy(),
     });
     const processed = [31, 31, 32, 33, 33].map((id) => pipeline.process(post(id)));
@@ -327,31 +337,6 @@ describe("post pipeline", () => {
     expect(evaluator.evaluate).toHaveBeenCalledTimes(3);
   });
 
-  it("does not re-evaluate a Processed Post across pipeline instances sharing a store", async () => {
-    expect.hasAssertions();
-    quiet("log");
-    const dedupeStore = memoryStore();
-    const firstEvaluator = stubEvaluator({ match: false, notes: "No match" });
-    const secondEvaluator = stubEvaluator({ match: false, notes: "No match" });
-    const telegram = telegramSpy();
-
-    await createPostPipeline({
-      dedupeStore,
-      evaluator: firstEvaluator,
-      ownerFiles: readableOwnerFiles(),
-      telegram,
-    }).process(post(8));
-    await createPostPipeline({
-      dedupeStore,
-      evaluator: secondEvaluator,
-      ownerFiles: readableOwnerFiles(),
-      telegram,
-    }).process(post(8));
-
-    expect(firstEvaluator.evaluate).toHaveBeenCalledTimes(1);
-    expect(secondEvaluator.evaluate).not.toHaveBeenCalled();
-  });
-
   it("marks a Post after a failed notification so it is not retried", async () => {
     expect.hasAssertions();
     quiet("error");
@@ -359,9 +344,9 @@ describe("post pipeline", () => {
     const evaluator = stubEvaluator();
     const telegram = failingTelegram();
     const pipeline = createPostPipeline({
-      dedupeStore: memoryStore(),
       evaluator,
       ownerFiles: readableOwnerFiles(),
+      processedPosts: memoryProcessedPosts(),
       telegram,
     });
 
@@ -377,17 +362,17 @@ describe("post pipeline", () => {
     quiet("log");
     const files = writeOwnerFiles();
     const ownerFiles = openOwnerFiles(files);
-    const dedupeStore = memoryStore();
+    const processedPosts = memoryProcessedPosts();
     const evaluator = stubEvaluator();
     const telegram = telegramSpy();
-    const pipeline = createPostPipeline({ dedupeStore, evaluator, ownerFiles, telegram });
+    const pipeline = createPostPipeline({ evaluator, ownerFiles, processedPosts, telegram });
     rmSync(files.criteriaPath);
 
     await pipeline.process(post(41));
 
     expect(telegram.sendToMe).toHaveBeenCalledWith("⚠️ criteria: not readable");
     expect(evaluator.evaluate).not.toHaveBeenCalled();
-    expect(dedupeStore.isProcessed("-1001234567890:41")).toBe(false);
+    await expect(isProcessed(processedPosts, post(41))).resolves.toBe(false);
   });
 
   it("still evaluates a Listing when a Notice fails to send", async () => {
@@ -396,11 +381,11 @@ describe("post pipeline", () => {
     quiet("log");
     const files = writeOwnerFiles();
     const ownerFiles = openOwnerFiles(files);
-    const dedupeStore = memoryStore();
+    const processedPosts = memoryProcessedPosts();
     const evaluator = stubEvaluator();
     const telegram = telegramSpy();
     telegram.sendToMe.mockRejectedValueOnce(new Error("Saved Messages unavailable"));
-    const pipeline = createPostPipeline({ dedupeStore, evaluator, ownerFiles, telegram });
+    const pipeline = createPostPipeline({ evaluator, ownerFiles, processedPosts, telegram });
     writeFileSync(files.criteriaPath, "Want a quieter street.\n");
 
     await pipeline.process(post(42));
@@ -408,6 +393,6 @@ describe("post pipeline", () => {
     expect(evaluator.evaluate).toHaveBeenCalledTimes(1);
     expect(telegram.sendToMe).toHaveBeenNthCalledWith(1, "🟢 criteria: updated");
     expect(telegram.sendToMe).toHaveBeenNthCalledWith(2, "https://t.me/example/42\nLooks good");
-    expect(dedupeStore.isProcessed("-1001234567890:42")).toBe(true);
+    await expect(isProcessed(processedPosts, post(42))).resolves.toBe(true);
   });
 });

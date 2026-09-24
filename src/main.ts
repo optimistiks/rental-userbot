@@ -1,18 +1,18 @@
 /* Composition root: every daemon collaborator is constructed here. */
 // oxlint-disable import/max-dependencies
 import type { LoginSettings, Settings } from "./config.js";
-import type { DedupeStore } from "./dedupe-store.js";
+import type { ProcessedPosts } from "./processed-posts.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { SessionLock } from "./session-lock.js";
 import type { SessionClient, TelegramClientLike } from "./telegram.js";
 
 import { readLoginSettings, readSettings } from "./config.js";
-import { openDedupeStore } from "./dedupe-store.js";
 import { errorMessage } from "./errors.js";
 import { createEvaluator } from "./evaluator.js";
 import { createLocator } from "./locate.js";
 import { openOwnerFiles } from "./owner-files.js";
 import { createPostPipeline } from "./pipeline.js";
+import { openProcessedPosts } from "./processed-posts.js";
 import { createSentryReporter } from "./sentry.js";
 import { acquireSessionLock } from "./session-lock.js";
 import { createTelegramAdapter, createTelegramClient, daemonStartParams } from "./telegram.js";
@@ -47,12 +47,12 @@ async function runDaemon(
   databasePath?: string,
   lock: SessionLock = acquireSessionLock(),
 ): Promise<void> {
-  let dedupeStore: DedupeStore | undefined;
+  let processedPosts: ProcessedPosts | undefined;
   let client: ManagedClient | undefined;
 
   try {
     const ownerFiles = openOwnerFiles(settings);
-    dedupeStore = openDedupeStore(databasePath);
+    processedPosts = openProcessedPosts(databasePath);
     client = makeClient(settings);
     await client.start(daemonStartParams);
     const telegram = createTelegramAdapter(client, ownerFiles.watchedChannelIds);
@@ -61,7 +61,6 @@ async function runDaemon(
     await telegram.sendToMe(startupNotice);
     const pipeline = createPostPipeline({
       concurrency: settings.evaluationConcurrency,
-      dedupeStore,
       errorReporter,
       evaluator: createEvaluator(settings, {
         downloadPhoto: telegram.downloadPhoto,
@@ -69,6 +68,7 @@ async function runDaemon(
         locator: createLocator(settings),
       }),
       ownerFiles,
+      processedPosts,
       telegram,
     });
     telegram.onPost((post) => {
@@ -82,7 +82,7 @@ async function runDaemon(
     });
   } catch (error) {
     lock.release();
-    dedupeStore?.close();
+    processedPosts?.close();
 
     if (client !== undefined) {
       try {

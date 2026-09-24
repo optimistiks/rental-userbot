@@ -1,11 +1,10 @@
-import type { DedupeStore } from "./dedupe-store.js";
 import type { EvaluationContext, EvaluationFailure, Evaluator, Verdict } from "./evaluator.js";
 import type { OwnerFileContents, OwnerFiles } from "./owner-files.js";
+import type { ProcessedPosts } from "./processed-posts.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { Post, Telegram } from "./telegram.js";
 
 import { MIN_LISTING_PHOTOS } from "./config.js";
-import { postKey } from "./dedupe-store.js";
 import { evaluationFailure } from "./evaluator.js";
 import { createSentryReporter } from "./sentry.js";
 
@@ -17,7 +16,7 @@ interface PostPipeline {
 interface PostPipelineOptions {
   evaluator: Evaluator;
   telegram: Pick<Telegram, "sendToMe">;
-  dedupeStore: DedupeStore;
+  processedPosts: Pick<ProcessedPosts, "once">;
   ownerFiles: Pick<OwnerFiles, "read">;
   errorReporter?: ErrorReporter;
   /** How many Listings are evaluated at once. Telegram calls stay one at a time in the adapter. */
@@ -29,8 +28,6 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
   let running = 0;
   // One start callback per Listing queued but not yet started; its length is logged so a growing backlog shows.
   const slotWaiters: (() => void)[] = [];
-  // Posts queued or running, so a second copy never takes a slot or runs alongside the first.
-  const inFlight = new Set<string>();
   const errorReporter = options.errorReporter ?? createSentryReporter();
 
   async function takeSlot(): Promise<void> {
@@ -55,7 +52,6 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
 
   async function runQueued(
     post: Post,
-    processedPostKey: string,
     ownerFiles: OwnerFileContents,
     noticeSend: Promise<void>,
   ): Promise<void> {
@@ -65,46 +61,35 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
       await noticeSend;
       await processQueuedPost(
         post,
-        processedPostKey,
         ownerFiles,
         { waitedMs: Date.now() - queuedAt, waiting: slotWaiters.length },
         options,
         errorReporter,
       );
     } finally {
-      inFlight.delete(processedPostKey);
       releaseSlot();
     }
   }
 
   return {
-    process(post) {
+    async process(post) {
       const { contents, notice } = options.ownerFiles.read();
       const noticeSend = deliverNotice(post, notice, options, errorReporter);
 
-      if (contents === undefined) {
-        return noticeSend;
-      }
-
-      if (!isListing(post)) {
+      if (contents !== undefined && isListing(post)) {
+        // Claimed now, before waiting for a slot, so a duplicate never queues behind it.
+        await options.processedPosts.once(post, () => runQueued(post, contents, noticeSend));
+      } else if (contents !== undefined) {
         console.log(`post ${post.link}: skipped — ${describeSkip(post)}`);
-        return noticeSend;
       }
 
-      const processedPostKey = postKey(post);
-      if (options.dedupeStore.isProcessed(processedPostKey) || inFlight.has(processedPostKey)) {
-        return noticeSend;
-      }
-
-      inFlight.add(processedPostKey);
-      return runQueued(post, processedPostKey, contents, noticeSend);
+      await noticeSend;
     },
   };
 }
 
 async function processQueuedPost(
   post: Post,
-  processedPostKey: string,
   ownerFiles: OwnerFileContents,
   context: EvaluationContext,
   options: PostPipelineOptions,
@@ -129,8 +114,6 @@ async function processQueuedPost(
   } catch (error) {
     console.error(`post ${post.link}: failed to send notification`, error);
     errorReporter.captureException(error, { phase: "notification", postLink: post.link });
-  } finally {
-    options.dedupeStore.markProcessed(processedPostKey);
   }
 
   logVerdict(post, verdict);

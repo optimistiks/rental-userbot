@@ -10,13 +10,13 @@ import path from "node:path";
 import { onTestFinished, vi } from "vitest";
 
 import type { Settings } from "./config.js";
-import type { DedupeStore } from "./dedupe-store.js";
 import type { Evaluator, EvaluatorOptions } from "./evaluator.js";
 import type { OwnerFileContents, OwnerFilePaths, OwnerFiles } from "./owner-files.js";
+import type { ProcessedPosts } from "./processed-posts.js";
 import type { Post } from "./telegram.js";
 
-import { openDedupeStore } from "./dedupe-store.js";
 import { createEvaluator } from "./evaluator.js";
+import { openProcessedPosts } from "./processed-posts.js";
 import { parseZone } from "./zone.js";
 
 const WATCHED_CHANNEL_ID = -1_001_234_567_890;
@@ -120,13 +120,13 @@ function testSettings(files: OwnerFilePaths = writeOwnerFiles()): Settings {
   };
 }
 
-/** An in-memory Dedupe Store, closed when the test ends. */
-function memoryStore(): DedupeStore {
-  const store = openDedupeStore(":memory:");
+/** Processed Posts in an in-memory database, closed when the test ends. */
+function memoryProcessedPosts(): ProcessedPosts {
+  const processedPosts = openProcessedPosts(":memory:");
   onTestFinished(() => {
-    store.close();
+    processedPosts.close();
   });
-  return store;
+  return processedPosts;
 }
 
 /** A model that answers each call with the next Verdict, or always the same one. */
@@ -165,7 +165,7 @@ export {
   ownerFileContents,
   readableOwnerFiles,
   testSettings,
-  memoryStore,
+  memoryProcessedPosts,
   verdictModel,
   testEvaluator,
 };

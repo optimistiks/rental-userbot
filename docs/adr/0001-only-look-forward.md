@@ -6,4 +6,4 @@ The bot runs on the owner's laptop, so it is down every night, every time the li
 
 - Every restart is a hole in coverage. That is the reason the things the owner tunes routinely live in files rather than environment variables ([ADR-0005](0005-owner-edited-files.md)), and the reason nothing restarts the bot automatically ([ADR-0004](0004-nothing-restarts-the-bot.md)).
 - Whatever mtcute's own gap handling delivers after a wake from sleep is evaluated like any other Post. It is not filtered by date, so a wake sometimes brings a few extra Posts and sometimes none.
-- The Dedupe Store is still needed. It is not there for recovery but because Telegram can deliver the same message twice and a restart must never re-evaluate a Processed Post.
+- The record of Processed Posts is still needed. It is not there for recovery but because Telegram can deliver the same message twice and a restart must never re-evaluate a Processed Post.
