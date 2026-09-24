@@ -112,6 +112,19 @@ function createTelegramAdapter(
   const postHandlers: ((post: Post) => void)[] = [];
   const photoLocations = new WeakMap<object, FileDownloadLocation>();
   let postStreamStarted = false;
+  let callTail: Promise<unknown> = Promise.resolve();
+
+  /* Listings are evaluated concurrently, but the account still makes one explicit
+     call at a time: downloads and Saved Messages writes never overlap. */
+  function oneAtATime<T>(call: () => Promise<T>): Promise<T> {
+    // oxlint-disable-next-line promise/prefer-await-to-then
+    const result = callTail.then(call);
+    // oxlint-disable-next-line promise/prefer-await-to-then
+    callTail = result.catch(() => {
+      /* Each caller handles its own failure; the next call still runs. */
+    });
+    return result;
+  }
 
   function startPostStream(): void {
     if (postStreamStarted) {
@@ -178,14 +191,16 @@ function createTelegramAdapter(
       if (location === undefined) {
         throw new Error("Unknown Telegram photo reference");
       }
-      return client.downloadAsBuffer(location);
+      return oneAtATime(() => client.downloadAsBuffer(location));
     },
     onPost(handler) {
       postHandlers.push(handler);
       startPostStream();
     },
     async sendToMe(text) {
-      await client.sendText("me", taggedForSavedMessages(text), { disableWebPreview: true });
+      await oneAtATime(() =>
+        client.sendText("me", taggedForSavedMessages(text), { disableWebPreview: true }),
+      );
     },
   };
 }

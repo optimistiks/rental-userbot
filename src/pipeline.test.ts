@@ -49,6 +49,36 @@ function post(
   };
 }
 
+/** An Evaluator whose runs each block until the test releases them by Post ID. */
+function blockingEvaluator(): {
+  evaluator: { evaluate: ReturnType<typeof vi.fn<Evaluator["evaluate"]>> };
+  started: number[];
+  running: () => number;
+  release: (id: number, match?: boolean) => void;
+} {
+  const releases = new Map<number, (match: boolean) => void>();
+  const started: number[] = [];
+  let active = 0;
+  const evaluate = vi.fn<Evaluator["evaluate"]>(async (listing) => {
+    const id = Number(listing.link?.split("/").at(-1));
+    started.push(id);
+    active += 1;
+    const match = await new Promise<boolean>((resolve) => {
+      releases.set(id, resolve);
+    });
+    active -= 1;
+    return { match, notes: `Post ${id}` };
+  });
+  return {
+    evaluator: { evaluate },
+    release: (id, match = false) => {
+      releases.get(id)?.(match);
+    },
+    running: () => active,
+    started,
+  };
+}
+
 describe("post pipeline", () => {
   it("ignores a Post that is not a Listing and does not mark it processed", async () => {
     expect.hasAssertions();
@@ -543,6 +573,116 @@ describe("post pipeline", () => {
 
     expect(evaluationOrder).toStrictEqual([6, 7]);
     expect(maximumActiveEvaluations).toBe(1);
+    log.mockRestore();
+    dedupeStore.close();
+  });
+
+  it("evaluates up to the configured number of Listings at once, starting them in arrival order", async () => {
+    expect.hasAssertions();
+    const dedupeStore = openDedupeStore(":memory:");
+    const { evaluator, release, running, started } = blockingEvaluator();
+    const pipeline = createPostPipeline({
+      concurrency: 2,
+      dedupeStore,
+      evaluator,
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      watchlist: staticWatchlist,
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const processed = [11, 12, 13, 14].map((id) =>
+      pipeline.process(post(-1_001_234_567_890, `Flat ${id}`, id)),
+    );
+
+    await vi.waitFor(() => {
+      expect(started).toStrictEqual([11, 12]);
+    });
+    expect(running()).toBe(2);
+
+    release(12);
+    await vi.waitFor(() => {
+      expect(started).toStrictEqual([11, 12, 13]);
+    });
+    expect(running()).toBe(2);
+
+    release(11);
+    release(13);
+    await vi.waitFor(() => {
+      expect(started).toStrictEqual([11, 12, 13, 14]);
+    });
+    release(14);
+    await Promise.all(processed);
+
+    expect(dedupeStore.isProcessed("-1001234567890:14")).toBe(true);
+    log.mockRestore();
+    dedupeStore.close();
+  });
+
+  it("notifies a Match as soon as it is ready, even while an older Listing is still running", async () => {
+    expect.hasAssertions();
+    const dedupeStore = openDedupeStore(":memory:");
+    const { evaluator, release, started } = blockingEvaluator();
+    const telegram = { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) };
+    const pipeline = createPostPipeline({
+      concurrency: 2,
+      dedupeStore,
+      evaluator,
+      telegram,
+      watchlist: staticWatchlist,
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const older = pipeline.process(post(-1_001_234_567_890, "Older flat", 21));
+    const newer = pipeline.process(post(-1_001_234_567_890, "Newer flat", 22));
+    await vi.waitFor(() => {
+      expect(started).toStrictEqual([21, 22]);
+    });
+
+    release(22, true);
+    await newer;
+
+    expect(telegram.sendToMe).toHaveBeenCalledExactlyOnceWith("https://t.me/example/22\nPost 22");
+    expect(dedupeStore.isProcessed("-1001234567890:21")).toBe(false);
+    release(21);
+    await older;
+    log.mockRestore();
+    dedupeStore.close();
+  });
+
+  it("evaluates a duplicate once whether it arrives while the first copy is running or waiting", async () => {
+    expect.hasAssertions();
+    const dedupeStore = openDedupeStore(":memory:");
+    const { evaluator, release, started } = blockingEvaluator();
+    const pipeline = createPostPipeline({
+      concurrency: 2,
+      dedupeStore,
+      evaluator,
+      telegram: { sendToMe: vi.fn<Telegram["sendToMe"]>(() => Promise.resolve()) },
+      watchlist: staticWatchlist,
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {
+      /* Keep test output quiet. */
+    });
+    const processed = [31, 31, 32, 33, 33].map((id) =>
+      pipeline.process(post(-1_001_234_567_890, `Flat ${id}`, id)),
+    );
+
+    // The running copy of 31 does not let its duplicate take the second slot.
+    await vi.waitFor(() => {
+      expect(started).toStrictEqual([31, 32]);
+    });
+    release(31);
+    await vi.waitFor(() => {
+      expect(started).toStrictEqual([31, 32, 33]);
+    });
+    release(32);
+    release(33);
+    await Promise.all(processed);
+
+    expect(evaluator.evaluate).toHaveBeenCalledTimes(3);
+    expect(dedupeStore.isProcessed("-1001234567890:33")).toBe(true);
     log.mockRestore();
     dedupeStore.close();
   });

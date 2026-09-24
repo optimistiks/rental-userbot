@@ -450,4 +450,77 @@ describe("telegram adapter", () => {
     expect(sent).toHaveLength(4096);
     expect(sent).toMatch(/^#rental_userbot\n/u);
   });
+
+  it("makes one explicit Telegram call at a time, and a failed call does not block the next", async () => {
+    expect.hasAssertions();
+    const onNewMessage = { add: vi.fn<TelegramClientLike["onNewMessage"]["add"]>() };
+    const releases: (() => void)[] = [];
+    const entered: string[] = [];
+    let active = 0;
+    let maximumActive = 0;
+    const enter = async (name: string): Promise<void> => {
+      entered.push(name);
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise<void>((resolve) => {
+        releases.push(resolve);
+      });
+      active -= 1;
+    };
+    const client = {
+      downloadAsBuffer: vi
+        .fn<TelegramClientLike["downloadAsBuffer"]>()
+        .mockImplementationOnce(async () => {
+          await enter("failing");
+          throw new Error("download failed");
+        })
+        .mockImplementation(async () => {
+          await enter("second");
+          return new Uint8Array();
+        }),
+      onMessageGroup: { add: vi.fn<TelegramClientLike["onMessageGroup"]["add"]>() },
+      onNewMessage,
+      sendText: vi.fn<TelegramClientLike["sendText"]>(() => enter("send")),
+    };
+    const telegram = createTelegramAdapter(client, watchedChannelIds);
+    const handler = vi.fn<(post: Post) => void>();
+    telegram.onPost(handler);
+    const onNewMessageHandler = onNewMessage.add.mock.calls[0][0] as unknown as (
+      message: FakeMessage,
+    ) => void;
+    for (const id of [50, 51]) {
+      onNewMessageHandler({
+        chat: { id: WATCHED_CHANNEL_ID },
+        id,
+        isService: false,
+        link: `https://t.me/example/${id}`,
+        media: { getThumbnail: () => null, type: "photo" },
+        text: "Flat",
+      });
+    }
+    const [failingRef, secondRef] = handler.mock.calls.map(([post]) => post.photos[0]);
+
+    // Settled up front so the failing download's rejection is handled before it happens.
+    const outcomes = Promise.allSettled([
+      telegram.downloadPhoto(failingRef),
+      telegram.sendToMe("Match"),
+      telegram.downloadPhoto(secondRef),
+    ]);
+
+    for (const expected of [["failing"], ["failing", "send"], ["failing", "send", "second"]]) {
+      // oxlint-disable-next-line no-await-in-loop -- Each call must be observed alone before the next is released.
+      await vi.waitFor(() => {
+        expect(entered).toStrictEqual(expected);
+      });
+      releases.shift()?.();
+    }
+
+    const settled = await outcomes;
+    expect(settled.map(({ status }) => status)).toStrictEqual([
+      "rejected",
+      "fulfilled",
+      "fulfilled",
+    ]);
+    expect(maximumActive).toBe(1);
+  });
 });

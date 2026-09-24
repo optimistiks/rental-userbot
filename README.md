@@ -14,7 +14,7 @@ makes the final call on its own; no rule in the code overrides it.
 2. Only a listing reaches the agent: post text and at least three photos. Everything else is skipped
    before a model call, and is not marked a Processed Post, so a later album can still be judged.
 3. A Processed Post is skipped, even after a restart. An album counts as one post.
-4. The agent evaluates a listing against your criteria, one at a time.
+4. The agent evaluates a listing against your criteria, a few at a time (`EVALUATION_CONCURRENCY`, default 3).
 5. A match arrives in Saved Messages as a link plus the agent's notes. Non-matches are silent.
 6. If the model fails three times, you get `⚠️ couldn't evaluate` instead, so nothing disappears quietly.
 
@@ -148,6 +148,7 @@ your account, so keep `data/` off any shared disk.
 | `MODEL_ID` | `google/gemini-3.8-flash` | Which model the agent runs on. It has to accept images. |
 | `MEDIA_RESOLUTION` | `low` | Gemini image resolution: `low`, `medium`, or `high`. |
 | `THINKING_LEVEL` | `low` | Gemini reasoning depth: `low`, `medium`, or `high`. |
+| `EVALUATION_CONCURRENCY` | `3` | How many listings the agent evaluates at once. Telegram calls stay one at a time regardless; raise it only as far as your model provider's rate limit allows. |
 | `GEOCODER_URL` | `https://eu1.locationiq.com/v1/search` | Where the geocoder tool searches |
 | `CHANNELS_PATH` | `data/channels.txt` | The channels to watch, one ID per line |
 | `CRITERIA_PATH` | `data/criteria.md` | Your criteria file |
@@ -164,6 +165,7 @@ Telegram doesn't love automation on personal accounts, so the bot behaves like a
 
 - It writes **only to your own Saved Messages**, never to anyone else, so there's nothing for anyone to report.
 - It **never joins, leaves or opens channels**. You join them yourself.
+- It makes **one Telegram call at a time**. Several listings can be with the agent at once, but photo downloads and Saved Messages writes never overlap, and each post still costs the same calls.
 - It **waits out rate limits** (up to five minutes) instead of retrying into them, and nothing restarts it into one.
 - Only **one process at a time** can use the session, so it's never revoked for being used twice.
 

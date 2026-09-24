@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   CHANNELS_PATH,
   CRITERIA_PATH,
+  EVALUATION_CONCURRENCY,
   GEOCODER_URL,
   MEDIA_RESOLUTION,
   MODEL_ID,
@@ -39,6 +40,7 @@ describe("readSettings", () => {
       apiId: 123_456,
       channelsPath: CHANNELS_PATH,
       criteriaPath: CRITERIA_PATH,
+      evaluationConcurrency: EVALUATION_CONCURRENCY,
       geocoderUrl: GEOCODER_URL,
       locationIqToken: "locationiq-token",
       mediaResolution: MEDIA_RESOLUTION,
@@ -56,6 +58,7 @@ describe("readSettings", () => {
         ...validEnvironment,
         CHANNELS_PATH: "/tmp/channels.txt",
         CRITERIA_PATH: "/tmp/criteria.md",
+        EVALUATION_CONCURRENCY: "8",
         GEOCODER_URL: "http://localhost:1234/search",
         MEDIA_RESOLUTION: "medium",
         MODEL_ID: "test/model",
@@ -66,6 +69,7 @@ describe("readSettings", () => {
     ).toMatchObject({
       channelsPath: "/tmp/channels.txt",
       criteriaPath: "/tmp/criteria.md",
+      evaluationConcurrency: 8,
       geocoderUrl: "http://localhost:1234/search",
       mediaResolution: "medium",
       modelId: "test/model",
@@ -98,6 +102,16 @@ describe("readSettings", () => {
     expect.hasAssertions();
     expect(() => readSettings({ ...validEnvironment, API_ID: "not-a-number" })).toThrow(/API_ID/u);
   });
+
+  it.each(["0", "-1", "1.5", "three", "9007199254740993"])(
+    "rejects EVALUATION_CONCURRENCY %s",
+    (value) => {
+      expect.hasAssertions();
+      expect(() => readSettings({ ...validEnvironment, EVALUATION_CONCURRENCY: value })).toThrow(
+        /EVALUATION_CONCURRENCY must be a positive integer/u,
+      );
+    },
+  );
 
   it.each([
     ["MEDIA_RESOLUTION", "ultra"],

@@ -3,6 +3,7 @@ type ProcessEnv = NodeJS.ProcessEnv;
 const MODEL_ID = "google/gemini-3.8-flash";
 const MEDIA_RESOLUTION = "low";
 const THINKING_LEVEL = "low";
+const EVALUATION_CONCURRENCY = 3;
 const GEOCODER_URL = "https://eu1.locationiq.com/v1/search";
 const CHANNELS_PATH = "data/channels.txt";
 const CRITERIA_PATH = "data/criteria.md";
@@ -27,6 +28,7 @@ interface Settings {
   modelId: string;
   mediaResolution: MediaResolution;
   thinkingLevel: ThinkingLevel;
+  evaluationConcurrency: number;
   locationIqToken: string;
   geocoderUrl: string;
   criteriaPath: string;
@@ -103,6 +105,10 @@ function readSettings(env: ProcessEnv = process.env): Settings {
     aiGatewayApiKey: required(env, "AI_GATEWAY_API_KEY"),
     channelsPath: optional(env, "CHANNELS_PATH", CHANNELS_PATH),
     criteriaPath: optional(env, "CRITERIA_PATH", CRITERIA_PATH),
+    evaluationConcurrency: positiveInteger(
+      optional(env, "EVALUATION_CONCURRENCY", String(EVALUATION_CONCURRENCY)),
+      "EVALUATION_CONCURRENCY",
+    ),
     geocoderUrl: optional(env, "GEOCODER_URL", GEOCODER_URL),
     locationIqToken: required(env, "LOCATIONIQ_TOKEN"),
     mediaResolution: optionalChoice(env, "MEDIA_RESOLUTION", MEDIA_RESOLUTION, MEDIA_RESOLUTIONS),
@@ -125,6 +131,7 @@ export {
   MODEL_ID,
   MEDIA_RESOLUTION,
   THINKING_LEVEL,
+  EVALUATION_CONCURRENCY,
   GEOCODER_URL,
   CHANNELS_PATH,
   CRITERIA_PATH,

@@ -69,6 +69,7 @@ async function runDaemon(
     });
     const zoneChecker = createZoneChecker(settings.zonePath);
     const pipeline = createPostPipeline({
+      concurrency: settings.evaluationConcurrency,
       dedupeStore: resources.dedupeStore,
       errorReporter,
       evaluator: createEvaluator(settings, {

@@ -22,13 +22,60 @@ interface PostPipelineOptions {
   dedupeStore: DedupeStore;
   notices?: Notices;
   errorReporter?: ErrorReporter;
+  /** How many Listings are evaluated at once. Telegram calls stay one at a time in the adapter. */
+  concurrency?: number;
 }
 
 function createPostPipeline(options: PostPipelineOptions): PostPipeline {
-  let queueTail = Promise.resolve();
-  // Listings queued but not yet started, logged when each one starts so a growing backlog shows.
-  let waiting = 0;
+  const concurrency = options.concurrency ?? 1;
+  let running = 0;
+  // One start callback per Listing queued but not yet started; its length is logged so a growing backlog shows.
+  const slotWaiters: (() => void)[] = [];
+  // Posts queued or running, so a second copy never takes a slot or runs alongside the first.
+  const inFlight = new Set<string>();
   const errorReporter = options.errorReporter ?? createSentryReporter();
+
+  async function takeSlot(): Promise<void> {
+    if (running < concurrency) {
+      running += 1;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      slotWaiters.push(resolve);
+    });
+  }
+
+  // A freed slot passes straight to the oldest waiting Listing, so start order stays FIFO.
+  function releaseSlot(): void {
+    const startOldest = slotWaiters.shift();
+    if (startOldest === undefined) {
+      running -= 1;
+    } else {
+      startOldest();
+    }
+  }
+
+  async function runQueued(
+    post: Post,
+    processedPostKey: string,
+    noticeSend: Promise<void>,
+  ): Promise<void> {
+    const queuedAt = Date.now();
+    await takeSlot();
+    try {
+      await noticeSend;
+      await processQueuedPost(
+        post,
+        processedPostKey,
+        { waitedMs: Date.now() - queuedAt, waiting: slotWaiters.length },
+        options,
+        errorReporter,
+      );
+    } finally {
+      inFlight.delete(processedPostKey);
+      releaseSlot();
+    }
+  }
 
   return {
     process(post) {
@@ -51,31 +98,12 @@ function createPostPipeline(options: PostPipelineOptions): PostPipeline {
       }
 
       const processedPostKey = postKey(post);
-      if (options.dedupeStore.isProcessed(processedPostKey)) {
+      if (options.dedupeStore.isProcessed(processedPostKey) || inFlight.has(processedPostKey)) {
         return noticeSend;
       }
 
-      /* The queue is a promise chain on purpose: process() must return at once
-         while each post still runs strictly after the previous one. */
-      waiting += 1;
-      const queuedAt = Date.now();
-      // oxlint-disable-next-line promise/prefer-await-to-then
-      const queued = queueTail.then(async () => {
-        waiting -= 1;
-        await noticeSend;
-        return processQueuedPost(
-          post,
-          processedPostKey,
-          { waitedMs: Date.now() - queuedAt, waiting },
-          options,
-          errorReporter,
-        );
-      });
-      // oxlint-disable-next-line promise/prefer-await-to-then
-      queueTail = queued.catch(() => {
-        /* Failures are reported per post; the queue keeps going. */
-      });
-      return queued;
+      inFlight.add(processedPostKey);
+      return runQueued(post, processedPostKey, noticeSend);
     },
   };
 }
@@ -87,10 +115,6 @@ async function processQueuedPost(
   options: PostPipelineOptions,
   errorReporter: ErrorReporter,
 ): Promise<void> {
-  if (options.dedupeStore.isProcessed(processedPostKey)) {
-    return;
-  }
-
   // The Evaluator turns its own failures into a Verdict; an unexpected throw must
   // Still reach the Notifier and be marked processed, so nothing is silently lost.
   let verdict: Verdict;

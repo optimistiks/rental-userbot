@@ -19,6 +19,7 @@ const settings = (
   apiId: 123_456,
   channelsPath,
   criteriaPath,
+  evaluationConcurrency: 1,
   geocoderUrl: "http://localhost:1234/search",
   locationIqToken: "locationiq-token",
   mediaResolution: "low",
