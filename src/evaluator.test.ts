@@ -1,7 +1,8 @@
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 
-import type { EvaluationFailure, EvaluatorOptions, RetryPolicy } from "./evaluator.js";
+import type { EvaluationFailure, RetryPolicy } from "./evaluator.js";
+import type { Locator } from "./locate.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef } from "./telegram.js";
 
@@ -13,9 +14,7 @@ import {
   testSettings,
   usage,
   verdictModel,
-  zoneCollection,
 } from "./test-support.js";
-import { parseZone } from "./zone.js";
 
 type GenerateResult = Awaited<
   ReturnType<
@@ -116,51 +115,45 @@ describe("evaluator", () => {
     });
   });
 
-  it("lets the agent locate every geocoder candidate in the Zone before returning its Verdict", async () => {
+  it("lets the agent locate a place in this Post's Zone before returning its Verdict", async () => {
     expect.hasAssertions();
     const log = quiet("log");
-    const geocode = vi.fn<EvaluatorOptions["geocode"]>(() =>
-      Promise.resolve({
-        results: [
-          {
-            label: "Gorgasali 33, Batumi",
-            lat: 41.6481086,
-            lon: 41.6393883,
-            precision: "building" as const,
-          },
-          {
-            label: "Gorgasali Street, Batumi",
-            lat: 41.641,
-            lon: 41.62,
-            precision: "street" as const,
-          },
-        ],
-      }),
+    const locate = vi.fn<Locator["locate"]>(() =>
+      Promise.resolve([
+        {
+          inside: true,
+          label: "Gorgasali 33, Batumi",
+          lat: 41.6481086,
+          lon: 41.6393883,
+          precision: "building" as const,
+          zone: "Old Batumi",
+        },
+        {
+          inside: false,
+          label: "Gorgasali Street, Batumi",
+          lat: 41.641,
+          lon: 41.62,
+          precision: "street" as const,
+          zone: null,
+        },
+      ]),
     );
-    // Around the first candidate only, in GeoJSON's [lon, lat] order.
-    const aroundFirstCandidate = zoneCollection("Old Batumi", [
-      [41.63, 41.645],
-      [41.645, 41.645],
-      [41.645, 41.655],
-      [41.63, 41.655],
-      [41.63, 41.645],
-    ]);
-    const ownerFiles = ownerFileContents({ zone: parseZone(JSON.stringify(aroundFirstCandidate)) });
+    const ownerFiles = ownerFileContents();
     const model = locatingModel("Gorgasali 33", { match: true, notes: "In Old Batumi" });
-    const evaluator = testEvaluator(model, { geocode });
+    const evaluator = testEvaluator(model, { locator: { locate } });
 
     await expect(
       evaluator.evaluate(post(52, { text: "Flat at Gorgasali 33" }), ownerFiles),
     ).resolves.toStrictEqual({ match: true, notes: "In Old Batumi" });
 
-    expect(geocode).toHaveBeenCalledWith("Gorgasali 33", expect.anything());
+    expect(locate).toHaveBeenCalledWith("Gorgasali 33", ownerFiles.zone, expect.anything());
     expect(model.doGenerateCalls).toHaveLength(2);
     expect(JSON.stringify(model.doGenerateCalls[1].prompt)).toContain(
       '"label":"Gorgasali Street, Batumi","lat":41.641,"lon":41.62,"precision":"street","zone":null',
     );
     expect(log).toHaveBeenCalledWith(
       expect.stringMatching(
-        /locateInZone ".*" → building ".*" \(41\.6481, 41\.6394\) inside Old Batumi; street ".*" \(41\.6410, 41\.6200\) outside/u,
+        /^post https:\/\/t\.me\/example\/52: locateInZone "Gorgasali 33" → building .* inside Old Batumi; street .* outside in \d+ms$/u,
       ),
     );
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/step 1 usage — 10 in/u));
@@ -172,7 +165,7 @@ describe("evaluator", () => {
     quiet("log");
     const model = locatingModel("Unknown address", { match: false, notes: "Location unclear" });
     const evaluator = testEvaluator(model, {
-      geocode: () => Promise.reject(new Error("provider unavailable")),
+      locator: { locate: () => Promise.reject(new Error("provider unavailable")) },
     });
 
     await expect(evaluator.evaluate(post(1), ownerFileContents())).resolves.toStrictEqual({

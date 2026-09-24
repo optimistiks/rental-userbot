@@ -140,7 +140,7 @@ function verdictModel(...verdicts: { match: boolean; notes: string }[]): MockLan
   return new MockLanguageModelV4({ doGenerate: results.length === 1 ? results[0] : results });
 }
 
-/** A real Evaluator whose photo downloads always work and whose geocoder finds nothing. */
+/** A real Evaluator whose photo downloads always work and whose Locator finds nothing. */
 function testEvaluator(
   model: LanguageModel,
   options: Partial<EvaluatorOptions> = {},
@@ -148,7 +148,7 @@ function testEvaluator(
 ): Evaluator {
   return createEvaluator(settings, {
     downloadPhoto: () => Promise.resolve(new Uint8Array([0])),
-    geocode: () => Promise.resolve({ results: [] }),
+    locator: { locate: () => Promise.resolve([]) },
     model,
     ...options,
   });

@@ -5,15 +5,15 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
 
 import type { Level, Settings } from "./config.js";
-import type { GeocodeResponse } from "./geocoder.js";
+import type { Locator } from "./locate.js";
 import type { OwnerFileContents } from "./owner-files.js";
 import type { ErrorReporter } from "./sentry.js";
 import type { PhotoRef, Post } from "./telegram.js";
 import type { Zone } from "./zone.js";
 
 import { errorMessage, errorName, isRecord } from "./errors.js";
+import { describeLocated } from "./locate.js";
 import { createSentryReporter } from "./sentry.js";
-import { inZone } from "./zone.js";
 
 const verdictSchema = z.object({
   match: z.boolean(),
@@ -29,23 +29,12 @@ type Verdict = z.infer<typeof verdictSchema> | EvaluationFailure;
 
 type EvaluatorSettings = Pick<Settings, "modelId" | "mediaResolution" | "thinkingLevel">;
 
-type Geocode = (query: string, signal?: AbortSignal) => Promise<GeocodeResponse>;
-
 interface EvaluatorOptions {
   model?: LanguageModel;
   downloadPhoto: (ref: PhotoRef) => Promise<Uint8Array>;
   retryPolicy?: RetryPolicy;
-  geocode: Geocode;
+  locator: Locator;
   errorReporter?: ErrorReporter;
-}
-
-interface LocatedCandidate {
-  inside: boolean;
-  label: string;
-  lat: number;
-  lon: number;
-  precision: string;
-  zone: string | null;
 }
 
 const TOOL_TIMEOUT_MS = 10_000;
@@ -81,14 +70,14 @@ const DEFAULT_RETRY_POLICY: RetryPolicy = {
 
 function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions): Evaluator {
   const model = options.model ?? settings.modelId;
-  const { downloadPhoto, geocode } = options;
+  const { downloadPhoto, locator } = options;
   const retryPolicy = options.retryPolicy ?? DEFAULT_RETRY_POLICY;
   const errorReporter = options.errorReporter ?? createSentryReporter();
 
   return {
     async evaluate(post, ownerFiles, context) {
       const { link } = post;
-      const tools = createEvaluatorTools(geocode, ownerFiles.zone);
+      const tools = createEvaluatorTools(locator, ownerFiles.zone, link);
       const photoData = await downloadPhotos(post.photos, link, downloadPhoto);
 
       const content: (
@@ -149,14 +138,13 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions)
                   `post ${link}: step ${step.stepNumber + 1} usage — ${describeUsage(step.usage)}`,
                 );
               },
+              // A result is logged by the tool itself, where its type is still known.
               onToolExecutionEnd: ({ toolCall, toolOutput, toolExecutionMs }) => {
-                const outcome =
-                  toolOutput.type === "tool-result"
-                    ? describeLocated(toolOutput.output)
-                    : `failed: ${errorMessage(toolOutput.error)}`;
-                console.log(
-                  `post ${link}: ${describeToolCall(toolCall.toolName, toolCall.input)} → ${outcome} in ${Math.round(toolExecutionMs)}ms`,
-                );
+                if (toolOutput.type !== "tool-result") {
+                  console.log(
+                    `post ${link}: ${describeToolCall(toolCall.toolName, toolCall.input)} → failed: ${errorMessage(toolOutput.error)} in ${Math.round(toolExecutionMs)}ms`,
+                  );
+                }
               },
               output: Output.object({ schema: verdictSchema }),
               prepareStep: ({ stepNumber }) =>
@@ -196,26 +184,18 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions)
 
 /* The tool set's type is inferred for generateText; spelling it out would repeat the SDK's generics. */
 // oxlint-disable-next-line typescript/explicit-function-return-type
-function createEvaluatorTools(geocode: Geocode, zone: Zone) {
+function createEvaluatorTools(locator: Locator, zone: Zone, link: string) {
   return {
     locateInZone: tool({
       description:
         "Search for an apartment or landmark in Batumi and check every candidate against the configured rental Zone. Use a cleaned address or place name. Returns up to three candidates with coordinates, precision, and Zone status so you can resolve ambiguous locations.",
-      execute: async ({ query }, { abortSignal }): Promise<{ results: LocatedCandidate[] }> => {
-        const response = await geocode(query, abortSignal);
-        return {
-          results: response.results.map((result) => {
-            const status = inZone(zone, { lat: result.lat, lon: result.lon });
-            return {
-              inside: status.inside,
-              label: result.label,
-              lat: result.lat,
-              lon: result.lon,
-              precision: result.precision,
-              zone: status.zone,
-            };
-          }),
-        };
+      execute: async ({ query }, { abortSignal }) => {
+        const startedAt = Date.now();
+        const results = await locator.locate(query, zone, abortSignal);
+        console.log(
+          `post ${link}: ${describeToolCall("locateInZone", { query })} → ${describeLocated(results)} in ${Date.now() - startedAt}ms`,
+        );
+        return { results };
       },
       inputSchema: z.object({ query: z.string().min(1) }),
     }),
@@ -345,22 +325,6 @@ function describeToolCall(toolName: string, input: unknown): string {
   return isRecord(input) && typeof input.query === "string"
     ? `${toolName} "${input.query}"`
     : `${toolName} ${JSON.stringify(input)}`;
-}
-
-/** Describes a locateInZone result: it is the only tool, but the SDK does not carry its output type this far. */
-function describeLocated(output: unknown): string {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-  const { results } = output as { results: LocatedCandidate[] };
-  if (results.length === 0) {
-    return "nothing found";
-  }
-
-  return results
-    .map((result) => {
-      const zone = result.inside ? `inside ${result.zone ?? "the Zone"}` : "outside";
-      return `${result.precision} "${result.label}" (${result.lat.toFixed(4)}, ${result.lon.toFixed(4)}) ${zone}`;
-    })
-    .join("; ");
 }
 
 function firstLine(text: string): string {

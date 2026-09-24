@@ -10,7 +10,7 @@ import { readLoginSettings, readSettings } from "./config.js";
 import { openDedupeStore } from "./dedupe-store.js";
 import { errorMessage } from "./errors.js";
 import { createEvaluator } from "./evaluator.js";
-import { createGeocoder } from "./geocoder.js";
+import { createLocator } from "./locate.js";
 import { openOwnerFiles } from "./owner-files.js";
 import { createPostPipeline } from "./pipeline.js";
 import { createSentryReporter } from "./sentry.js";
@@ -59,7 +59,6 @@ async function runDaemon(
     const startupNotice = `🟢 started, ${watchingMessage(ownerFiles.watchedAtStartup)}`;
     console.log(`startup: ${startupNotice}`);
     await telegram.sendToMe(startupNotice);
-    const geocoder = createGeocoder(settings);
     const pipeline = createPostPipeline({
       concurrency: settings.evaluationConcurrency,
       dedupeStore,
@@ -67,7 +66,7 @@ async function runDaemon(
       evaluator: createEvaluator(settings, {
         downloadPhoto: telegram.downloadPhoto,
         errorReporter,
-        geocode: (query, signal) => geocoder.geocode(query, signal),
+        locator: createLocator(settings),
       }),
       ownerFiles,
       telegram,
