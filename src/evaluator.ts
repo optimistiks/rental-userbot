@@ -125,7 +125,7 @@ function createEvaluator(settings: EvaluatorSettings, options: EvaluatorOptions)
                   telemetry: {
                     functionId: "rental-evaluator",
                     isEnabled: true,
-                    recordInputs: true,
+                    recordInputs: false,
                     recordOutputs: true,
                   },
                 }

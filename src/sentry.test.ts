@@ -85,7 +85,7 @@ describe("sentry reporter", () => {
     expect(sentry.events).toStrictEqual(["prepare", "init"]);
     expect(sentry.initOptions).toMatchObject({
       dataCollection: {
-        genAI: { inputs: true, outputs: true },
+        genAI: { inputs: false, outputs: true },
         httpBodies: [],
         httpHeaders: false,
         urlQueryParams: false,

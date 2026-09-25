@@ -177,7 +177,7 @@ What's up to you: run it on an established account rather than a fresh one, keep
   those posts are gone; there's no catch-up.
 - **It only ever writes to your own Saved Messages.** It never posts, replies, joins or leaves anything.
 - **The same flat posted in two channels arrives twice.** Matching across channels isn't in this version.
-- With Sentry on, your criteria and the post text are sent there as part of each trace.
+- With Sentry on, the agent's steps, tool calls and Notes are sent there as part of each trace. Its inputs (criteria, post text, photos) are not.
 
 ## Development
 

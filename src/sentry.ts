@@ -52,7 +52,9 @@ function createSentryReporter(dsn?: string, api: SentryApi = Sentry): ErrorRepor
         return { ...span, data };
       },
       dataCollection: {
-        genAI: { inputs: true, outputs: true },
+        /* Inputs include every photo, resent on each agent step; holding them in
+           spans until a trace flushes exhausted the heap once Listings ran concurrently. */
+        genAI: { inputs: false, outputs: true },
         httpBodies: [],
         httpHeaders: false,
         stackFrameVariables: false,
